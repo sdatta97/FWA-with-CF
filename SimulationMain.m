@@ -299,7 +299,7 @@ for idxnumUE = 1:length(percent_fr2_UE_arr)
             %                 end
             %             end
             %             fclose(fileID);
-            %         end
+                    end
                 end
             end
         end
