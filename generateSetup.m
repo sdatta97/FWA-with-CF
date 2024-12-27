@@ -54,8 +54,8 @@ K_mmW = params.numUE;
 K = params.numUE+params.numUE_sub6;
 Lmax = params.Lmax;
 N = params.num_antennas_per_gNB;
-N_UE_mmW = params.N_UE_mmW;
-N_UE_sub6 = params.N_UE_sub6;
+N_UE_FWA = params.N_UE_FWA;
+N_UE_cell = params.N_UE_cell;
 coverageRange = params.coverageRange;
 coverageRange_sub6 = params.coverageRange_sub6;
 % tau_p = params.tau_p;
@@ -103,8 +103,8 @@ antennaSpacing = 1/2; %Half wavelength distance
 %Prepare to save results
 gainOverNoisedB = zeros(L,K,nbrOfSetups);
 R_gNB = zeros(N,N,L,K,nbrOfSetups);
-R_ue_mmW = zeros(N_UE_mmW,N_UE_mmW,L,K_mmW,nbrOfSetups);
-R_ue_sub6 = zeros(N_UE_sub6,N_UE_sub6,L,K-K_mmW,nbrOfSetups);
+R_ue_mmW = zeros(N_UE_FWA,N_UE_FWA,L,K_mmW,nbrOfSetups);
+R_ue_sub6 = zeros(N_UE_cell,N_UE_cell,L,K-K_mmW,nbrOfSetups);
 distances = zeros(L,K,nbrOfSetups);
 pilotIndex = zeros(K,nbrOfSetups);
 % D = zeros(L,K,nbrOfSetups);
@@ -237,16 +237,16 @@ for n = 1:nbrOfSetups
             if nargin>12
                 R_gNB(:,:,l,k,n) = db2pow(gainOverNoisedB(l,k,n))*functionRlocalscattering_mod(N,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
                 if (k<=K_mmW)
-                    R_ue_mmW(:,:,l,k,n) = functionRlocalscattering_mod(N_UE_mmW,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
+                    R_ue_mmW(:,:,l,k,n) = functionRlocalscattering_mod(N_UE_FWA,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
                 else
-                    R_ue_sub6(:,:,l,k-K_mmW,n) = functionRlocalscattering_mod(N_UE_sub6,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
+                    R_ue_sub6(:,:,l,k-K_mmW,n) = functionRlocalscattering_mod(N_UE_cell,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
                 end
             else
                 R_gNB(:,:,l,k,n) = db2pow(gainOverNoisedB(l,k,n))*eye(N);  %If angular standard deviations are not specified, set i.i.d. fading
                 if (k<=K_mmW)
-                    R_ue_mmW(:,:,l,k,n) = eye(N_UE_mmW);
+                    R_ue_mmW(:,:,l,k,n) = eye(N_UE_FWA);
                 else
-                    R_ue_sub6(:,:,l,k-K_mmW,n) = eye(N_UE_sub6);
+                    R_ue_sub6(:,:,l,k-K_mmW,n) = eye(N_UE_cell);
                 end
             end
         end

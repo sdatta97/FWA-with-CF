@@ -54,7 +54,7 @@ params.p = 100;
 % rho_tot_arr = [10:10:100, 200:100:1000, 2000:1000:10000];
 
 %Power factor division
-p_fac_arr = 10; %.^(1:1:2);
+p_fac_arr = 1; %.^(1:1:2);
 % params.p_fac = 10;
 percent_fr2_UE_arr = 5; %5:5:20;
 
@@ -88,11 +88,11 @@ params.rho_tot = 10^(3.6)*params.num_antennas_per_gNB; %200;
 
 % params.num_antennas_per_gNB = 8;
 %Number of antennas per UE
-params.N_UE_mmW = 1; %8;
-params.N_UE_sub6 = 1; %4;
+params.N_UE_FWA = 16;
+params.N_UE_cell = 1; %4;
 rmin_arr = 4*10^8;
-lambda_BS = ([5 6 7 8 9 10]).^2;
-lambda_UE_sub6 = 500; %250:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
+lambda_BS = 25; %([5 6 7 8 9 10]).^2;
+lambda_UE_sub6 = 250; %250:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
 params.Lmax = 4;
 % for idxnumUEsub6 = 1:length(numUE_sub6_arr)
 lb_thresh = 0.1; %[0:0.05:0.1 0.5 1];
@@ -173,7 +173,8 @@ for idxnumUE = 1:length(percent_fr2_UE_arr)
             % params.hb = (175 + TruncatedGaussian(5, [-15,15], [1 params.numBlockers])) / 100;
             params.hb = 1.8*ones(1,params.numBlockers); %height blocker
             params.mu = 2; %Expected bloc dur =1/mu sec
-           
+            numUE = params.numUE;
+            numUE_sub6 = params.numUE_sub6;
             
             K = params.numUE + params.numUE_sub6;  % --Ground UEs
             snr_db = params.snr_db;
@@ -206,6 +207,7 @@ for idxnumUE = 1:length(percent_fr2_UE_arr)
             for idxrmin = 1:length(rmin_arr)
                 for idx_p = 1:length(p_fac_arr)
                     for idxlbthres = 1:length(lb_thresh)
+                        params.ue_rearranged = [];
                         lb_thres = lb_thresh(idxlbthres);
                         rmin = rmin_arr(idxrmin);
                         rmin_sub6 = 35e6;
@@ -214,21 +216,53 @@ for idxnumUE = 1:length(percent_fr2_UE_arr)
                         params.r_min = rmin;  %stores min rate requirement for all mmWave users
                         params.rate_reduce_threshold = 5e7;
                         params.p_fac = p_fac_arr(idx_p);
-                        params.p_fac_rearrange = 1; % 0.1*p_fac_arr(idx_p);                               
+                        params.p_fac_rearrange = 1; % 0.1*p_fac_arr(idx_p);  
+                        sub6ConnectionState = zeros(params.numUE,1);
+                        ue_idx = 1;
+                        sub6ConnectionState(ue_idx) = 1;
+                        [channel_dl, channel_est_dl,channel_dl_mmW, channel_est_dl_mmW] = computePhysicalChannels_sub6_MIMO(params);
+                        [~, ue_idxs_affected] = AP_reassign(params,ue_idx);
+                        ue_rearranged = union(ue_idxs_affected, params.ue_rearranged);
+                        rate_dl_before_handoff = compute_link_rates_MIMO_mmse(params,channel_dl, channel_est_dl,channel_dl_mmW, channel_est_dl_mmW,zeros(params.numUE,1));                                              
+                        lb = quantile(rate_dl_before_handoff(ue_rearranged)./params.Band,params.loss_pc_thresh);
+                        bw_alloc = Band - rmin_sub6/lb;
+                        if (bw_alloc < 0) %|| isnan(bw_alloc)
+                            bw_alloc = 0;
+                            params.p_fac = 1;
+                            rate_dl_after_handoff = rate_dl_before_handoff;
+                        elseif isnan(bw_alloc)
+                            rate_dl_after_handoff = compute_link_rates_MIMO_mmse(params,channel_dl, channel_est_dl,channel_dl_mmW, channel_est_dl_mmW,sub6ConnectionState);                                              
+                            lb = quantile(rate_dl_after_handoff((1+numUE):(numUE+numUE_sub6)),params.loss_pc_thresh);                                
+                        else 
+                            params.ue_rearranged = ue_rearranged;
+                            ues_not_affected = setdiff((1+numUE):(numUE+numUE_sub6),params.ue_rearranged);
+                            params.scs_sub6(1) = bw_alloc;
+                            params.scs_sub6(2) = Band - bw_alloc;
+                            % user_sc_alloc = ones(numUE+numUE_sub6,params.num_sc_sub6);                               
+                            user_sc_alloc = params.user_sc_alloc; %zeros(numUE+numUE_sub6,1);     
+                            user_sc_alloc(find(sub6ConnectionState),1) = 1;
+                            user_sc_alloc(find(sub6ConnectionState),2) = 0;
+                            user_sc_alloc(ues_not_affected,1) = 1;
+                            user_sc_alloc(ues_not_affected,2) = 1;
+                            user_sc_alloc(params.ue_rearranged,1) = 0;
+                            user_sc_alloc(params.ue_rearranged,2) = 1;
+                            params.user_sc_alloc = user_sc_alloc;
+                            ues_sharing = union(((1:numUE).*sub6ConnectionState),ues_not_affected);
+    %                         rate_dl_after_handoff = compute_link_rates_MIMO(params,channel_dl, channel_est_dl,channel_dl_mmW, channel_est_dl_mmW,sub6ConnectionState);                                              
+                            rate_dl_after_handoff = compute_link_rates_MIMOv4(params,channel_dl, channel_est_dl,channel_dl_mmW, channel_est_dl_mmW,sub6ConnectionState);    
+                            ues_not_affected = setdiff((1+numUE):(numUE+numUE_sub6),params.ue_rearranged);
+                            lb = quantile(rate_dl_after_handoff(ues_not_affected),params.loss_pc_thresh);
+                        end             
                         %% Recording the Results
-                
+                    
                         %Taking care of folder directory creation etc
                         dataFolder = 'resultData';
-                        outageFolder = strcat(dataFolder,'/outageResults');
-                        eventFolder = strcat(dataFolder,'/allResults');
+                        rateFolder = strcat(dataFolder,'/ratecomparisonResults');
                         if not(isfolder(dataFolder))
                             mkdir(dataFolder)
                         end
-                        if not(isfolder(outageFolder))
-                            mkdir(outageFolder)
-                        end
-                        if not(isfolder(eventFolder))
-                            mkdir(eventFolder)
+                        if not(isfolder(rateFolder))
+                            mkdir(rateFolder)
                         end
                 
                 
@@ -245,60 +279,31 @@ for idxnumUE = 1:length(percent_fr2_UE_arr)
                         numUE = params.numUE;
                         numUE_sub6 = params.numUE_sub6;
                         numBS = size(params.locationsBS,1);
-                        numBlockers = params.numBlockers;
+                        min_rate_req = params.r_min;
+                        p_fac = params.p_fac;
                         result_string = strcat('/results_',num2str(percent_fr2_UE_arr(idxnumUE)),...
                             'percentfr2UE_',num2str(lambda_BS(idxBSDensity)),...
                             'lambdaBS_',num2str(lambda_UE_sub6(idxUEDensity)),...
                             'lambdaUE_',num2str(deployRange),...
-                    'deployRange_',num2str(numBlockers), 'Blockers_randomHeight_', num2str(aID),'Min_rate', num2str(rmin), "Pow_fac", num2str(params.p_fac), "lb_thres", num2str(100*params.loss_pc_thresh));
-                        results_save_string = strcat(eventFolder,result_string,'.mat');
-                
-                        %Since we are mostly interested in blockage probability, we want to
-                        %transfer the data quickly to our local machine from server. We will save
-                        %the results as a txt file.
-                        recording_text_file_string = strcat(outageFolder,result_string,'.csv');
+                        'deployRange_',num2str(aID),'Min_rate', num2str(rmin), "Pow_fac", num2str(p_fac), "lb_thres", num2str(100*lb_thres));
+                        recording_text_file_string = strcat(rateFolder,result_string,'.csv');
                         fileID = fopen(recording_text_file_string,'w');
-                        output_categories = ['UE idx,','lambdaBS,','lambdaUE,','numBlockers,',...
-                            'deployRange,','discoveryDelay,','failureDetectionDelay,','connectionSetupDelay,',...
-                            'signalingAfterRachDelay,','frameHopCount,','frameDeliveryDelay,'...
-                            'minRatereq,','powerFac,','lower_bound_thresh,', 'meanOutageDuration_wo_CF,','outageProbability_wo_CF,','meanOutageDuration,','outageProbability\n'];
-                
+                        output_categories = ['UE idx,','lambdaBS,','lambdaUE,',...
+                            'deployRange,','minRatereq,','powerFac,','lower_bound_thresh,', 'mean_rate_before_handoff_affected,','mean_rate_after_handoff_affected,','mean_rate_before_handoff_not_affected,','mean_rate_after_handoff_not_affected,','rate_after_handoff_fr2\n'];
                         fprintf(fileID,output_categories);
+
+                        mean_rate_before_handoff_affected = mean(rate_dl_before_handoff(params.ue_rearranged));
+                        mean_rate_after_handoff_affected = mean(rate_dl_after_handoff(params.ue_rearranged));
+                        mean_rate_before_handoff_not_affected = mean(rate_dl_before_handoff(ues_not_affected));
+                        mean_rate_after_handoff_not_affected = mean(rate_dl_after_handoff(ues_not_affected));
+                        fr2_rate = rate_dl_after_handoff(ue_idx);
+                        
+                        formatSpec = '%d,%d,%d,%f,%f,%f,%f,%.16f,%.16f,%.16f,%.16f,%.16f\n';
+                        fprintf(fileID,formatSpec,ue_idx, lambda_BS(idxBSDensity),lambda_UE_sub6(idxUEDensity),...
+                        deployRange, min_rate_req, p_fac, lb_thres, ...
+                        mean_rate_before_handoff_affected,mean_rate_after_handoff_affected,mean_rate_before_handoff_not_affected,mean_rate_after_handoff_not_affected,fr2_rate);
+                        fclose(fileID);
                 
-            %             for idxDiscDelay = 1:length(protocolParams.discovery_time)
-            %                 for idxFailureDetectionDelay = 1:length(protocolParams.FailureDetectionTime)
-            %                     for idxConnDelay = 1:length(protocolParams.connection_time)
-            %                         for idxSignalingAfterRachDelay = 1:length(protocolParams.signalingAfterRachTime)
-            %                             thisOutputs = simOutputs{idxDiscDelay,idxFailureDetectionDelay,idxConnDelay,idxSignalingAfterRachDelay};                    
-            %                             numBS                   = size(thisOutputs.params.locationsBS,1);                
-            %                             numBlockers             = thisOutputs.params.numBlockers;
-            %                             discDelay               = thisOutputs.discovery_delay;
-            %                             failureDetectionDelay   = thisOutputs.failureDetectionDelay;
-            %                             connDelay               = thisOutputs.connection_setup_delay;
-            %                             signalingAfterRachDelay = thisOutputs.signalingAfterRachDelay;
-            %                             frameHopCount           = thisOutputs.frameHopCount;
-            %                             frameDeliveryDelay      = thisOutputs.frameDeliveryDelay;
-            %                             outage_durations_wo_cf = thisOutputs.outage_durations_wo_cf;
-            %                             outage_durations_wi_cf = thisOutputs.outage_durations_wi_cf;
-            % 
-            %                             for ue_idx = 1:params.numUE   %storing outage probability and duration for each user
-            %                                 mean_outage_duration_wo_cf    = thisOutputs.mean_outage_duration_wo_cf(ue_idx);
-            %                                 outage_probability_wo_cf      = thisOutputs.outage_probability_wo_cf(ue_idx);
-            %                                 mean_outage_duration    = thisOutputs.mean_outage_duration(ue_idx);
-            %                                 outage_probability      = thisOutputs.outage_probability(ue_idx);
-            %                                 min_rate_req = params.r_min;
-            %                                 p_fac = params.p_fac;
-            %                                 formatSpec = '%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%.16f,%.16f,%.16f,%.16f,%.16f\n';
-            %                                 fprintf(fileID,formatSpec,ue_idx, lambda_BS(idxBSDensity),lambda_UE_sub6(idxUEDensity),numBlockers,...
-            %                                     deployRange,discDelay,failureDetectionDelay,connDelay,...
-            %                                     signalingAfterRachDelay,frameHopCount,frameDeliveryDelay,...
-            %                                     min_rate_req, p_fac, lb_thres, mean_outage_duration_wo_cf,outage_probability_wo_cf,mean_outage_duration,outage_probability);
-            %                             end
-            %                         end
-            %                     end
-            %                 end
-            %             end
-            %             fclose(fileID);
                     end
                 end
             end
