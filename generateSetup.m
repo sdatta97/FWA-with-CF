@@ -292,7 +292,11 @@ for n = 1:nbrOfSetups
 %     end
     for k = 1:K
         [gains, idxs] = sort(gainOverNoise(:,k), 'descend');
-        idxs_not_chosen = idxs((Lmax+1):end);
+        if (k<=K_mmW)
+            idxs_not_chosen = idxs(2:end);
+        else
+            idxs_not_chosen = idxs((Lmax+1):end);
+        end
         D(idxs_not_chosen,k,n) = 0;
     end
     %Determine the AP serving each UE in the small-cell setup according to
