@@ -1,4 +1,4 @@
-function [gainOverNoisedB,R_gNB,R_ue_mmW,R_ue_sub6,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,nbrOfSetups,seed)
+function [gainOverNoisedB,R_gNB,R_ue_mmW,R_ue_sub6,D,D_small,APpositions,distances] = generateSetup_SC(params,nbrOfSetups,seed,pilotIndex,D,D_small,UEpositions)
 %This function generates realizations of the simulation setup described in
 %Section 5.3.
 %
@@ -49,11 +49,11 @@ function [gainOverNoisedB,R_gNB,R_ue_mmW,R_ue_sub6,pilotIndex,D,D_small,APpositi
 %License: This code is licensed under the GPLv2 license. If you in any way
 %use this code for research that results in publications, please cite our
 %monograph as described above.
-L = size(params.locationsBS,1);
+L = size(params.locationsSC,1);
 K_mmW = params.numUE;
 K = params.numUE+params.numUE_sub6;
 Lmax = params.Lmax;
-N = params.num_antennas_per_gNB;
+N = params.num_antennas_per_sc;
 N_UE_FWA = params.N_UE_FWA;
 N_UE_cell = params.N_UE_cell;
 coverageRange = params.coverageRange;
@@ -106,11 +106,6 @@ R_gNB = zeros(N,N,L,K,nbrOfSetups);
 R_ue_mmW = zeros(N_UE_FWA,N_UE_FWA,L,K_mmW,nbrOfSetups);
 R_ue_sub6 = zeros(N_UE_cell,N_UE_cell,L,K-K_mmW,nbrOfSetups);
 distances = zeros(L,K,nbrOfSetups);
-pilotIndex = zeros(K,nbrOfSetups);
-% D = zeros(L,K,nbrOfSetups);
-D = ones(L,K,nbrOfSetups);
-D_small = zeros(L,K,nbrOfSetups);
-
 masterAPs = zeros(K,1); %the indices of master AP of each UE k 
 
 
@@ -118,13 +113,8 @@ masterAPs = zeros(K,1); %the indices of master AP of each UE k
 for n = 1:nbrOfSetups
     
     %Random AP locations with uniform distribution
-    locationsBS = params.locationsBS;
-    APpositions = locationsBS(:,1) + 1i*locationsBS(:,2);
-    %Prepare to compute UE locations  
-    UE_locations = params.UE_locations;
-    UE_locations_sub6 = params.UE_locations_sub6;
-    UEpositions = [UE_locations; UE_locations_sub6];
-    UEpositions = UEpositions(:,1) + 1i*UEpositions(:,2);
+    locationsSC = params.locationsSC;
+    APpositions = locationsSC(:,1) + 1i*locationsSC(:,2);
     %Compute alternative AP locations by using wrap around
     % wrapHorizontal = repmat([-squareLength 0 squareLength],[3 1]);
     wrapHorizontal = repmat([-coverageRange_sub6 0 coverageRange_sub6],[3 1]);
@@ -187,9 +177,6 @@ for n = 1:nbrOfSetups
         shadowCorrMatrix(1:k-1,k) = newcolumn;
         shadowCorrMatrix(k,1:k-1) = newcolumn';
         shadowAPrealizations(k,:) = shadowing;
-        
-        %Store the UE position
-        UEpositions(k) = UEposition;
         
         
         %Determine the master AP for UE k by looking for AP with best
