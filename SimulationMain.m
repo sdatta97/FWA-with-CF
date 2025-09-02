@@ -56,7 +56,7 @@ for aID = 0:99
     % rho_tot_arr = [10:10:100, 200:100:1000, 2000:1000:10000];
     
     %Power factor division
-    p_fac_arr = 10; %10.^(0:1:2);
+    p_fac_arr = 1; %10.^(0:1:2);
     % params.p_fac = 10;
     percent_fr2_UE_arr = 5; %5:5:20;
     
@@ -97,7 +97,7 @@ for aID = 0:99
     lambda_UE_sub6 = 250; %250:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
     params.Lmax = 2;
     % for idxnumUEsub6 = 1:length(numUE_sub6_arr)
-    lb_thresh = 0.1; %[0:0.05:0.1 0.5 1];
+    lb_thresh = 0; %0.1; %[0:0.05:0.1 0.5 1];
     for idxnumUE = 1:length(percent_fr2_UE_arr)
         % n = poissrnd((percent_fr2_UE_arr(idxnumUE)/100)*lambda_UE_sub6*pi*(params.deployRange/1000)^2);
         % while(n==0)
@@ -143,14 +143,6 @@ for aID = 0:99
                 % length_area = 2*(params.deployRange + params.coverageRange);   
                 % width_area = 2*(params.deployRange + params.coverageRange);
                 params.areaDimensions = [width_area, length_area, height_transmitter];
-                        %Length of the coherence block
-        %                 params.tau_c = 200;
-                    
-                    %Compute number of pilots per coherence block
-        %                 params.tau_p = params.numUE+params.numUE_sub6;
-                    
-                    %Compute the prelog factor assuming only downlink data transmission
-            %         params.preLogFactor = (params.tau_c-params.tau_p)/params.tau_c;
                 params.preLogFactor = 1;
         
                 %Number of setups with random UE locations
@@ -229,41 +221,13 @@ for aID = 0:99
                             [channel_dl, channel_est_dl,channel_dl_mmW, channel_est_dl_mmW] = computePhysicalChannels_sub6_MIMO(params);
                             [~, ue_idxs_affected] = AP_reassign(params,ue_idx);
                             ue_rearranged = union(ue_idxs_affected, params.ue_rearranged);
+                            ues_not_affected = setdiff((1+numUE):(numUE+numUE_sub6),ue_rearranged);
                             rate_dl_before_handoff = compute_link_rates_MIMO_mmse(params,channel_dl, channel_est_dl,channel_dl_mmW, channel_est_dl_mmW,zeros(params.numUE,1));                                              
-                            lb = quantile(rate_dl_before_handoff(ue_rearranged)./params.Band,params.loss_pc_thresh);
-                            bw_alloc = Band - rmin_sub6/lb;
-                            if (bw_alloc < 0) %|| isnan(bw_alloc)
-                                bw_alloc = 0;
-                                params.p_fac = 1;
-                                rate_dl_after_handoff = rate_dl_before_handoff;
-                            elseif isnan(bw_alloc)
-                                rate_dl_after_handoff = compute_link_rates_MIMO_mmse(params,channel_dl, channel_est_dl,channel_dl_mmW, channel_est_dl_mmW,sub6ConnectionState);                                              
-                                lb = quantile(rate_dl_after_handoff((1+numUE):(numUE+numUE_sub6)),params.loss_pc_thresh);                                
-                            else 
-                                params.ue_rearranged = ue_rearranged;
-                                ues_not_affected = setdiff((1+numUE):(numUE+numUE_sub6),params.ue_rearranged);
-                                params.scs_sub6(1) = bw_alloc;
-                                params.scs_sub6(2) = Band - bw_alloc;
-                                % user_sc_alloc = ones(numUE+numUE_sub6,params.num_sc_sub6);                               
-                                user_sc_alloc = params.user_sc_alloc; %zeros(numUE+numUE_sub6,1);     
-                                user_sc_alloc(find(sub6ConnectionState),1) = 1;
-                                user_sc_alloc(find(sub6ConnectionState),2) = 0;
-                                user_sc_alloc(ues_not_affected,1) = 1;
-                                user_sc_alloc(ues_not_affected,2) = 1;
-                                user_sc_alloc(params.ue_rearranged,1) = 0;
-                                user_sc_alloc(params.ue_rearranged,2) = 1;
-                                params.user_sc_alloc = user_sc_alloc;
-                                ues_sharing = union(((1:numUE).*sub6ConnectionState),ues_not_affected);
-        %                         rate_dl_after_handoff = compute_link_rates_MIMO(params,channel_dl, channel_est_dl,channel_dl_mmW, channel_est_dl_mmW,sub6ConnectionState);                                              
-                                rate_dl_after_handoff = compute_link_rates_MIMOv4(params,channel_dl, channel_est_dl,channel_dl_mmW, channel_est_dl_mmW,sub6ConnectionState);    
-                                ues_not_affected = setdiff((1+numUE):(numUE+numUE_sub6),params.ue_rearranged);
-                                lb = quantile(rate_dl_after_handoff(ues_not_affected),params.loss_pc_thresh);
-                            end             
                             %% Recording the Results
                         
                             %Taking care of folder directory creation etc
                             dataFolder = 'resultData';
-                            rateFolder = strcat(dataFolder,'/ratecomparisonResults');
+                            rateFolder = strcat(dataFolder,'/FWA_allotment_Results');
                             if not(isfolder(dataFolder))
                                 mkdir(dataFolder)
                             end
