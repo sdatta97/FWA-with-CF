@@ -1,6 +1,6 @@
 function [phy_channel_sub6, phy_channel_sub6_est, phy_channel_mmW, phy_channel_mmW_est] = computePhysicalChannels_sub6_MIMO(params)
-K = params.numUE+params.numUE_sub6;
-K_mmW = params.numUE;
+K = params.numUE+params.numCPE;
+K_mmW = params.numCPE;
 Ntx = params.num_antennas_per_gNB;
 N_FWA = params.N_UE_FWA;
 N_cell = params.N_UE_cell;

@@ -1,11 +1,11 @@
 function [phy_channel_sub6, phy_channel_sub6_est, phy_channel_mmW, phy_channel_mmW_est] = computePhysicalChannels_sub6_MIMO_sc(params)
-K = params.numUE+params.numUE_sub6;
-K_mmW = params.numUE;
+K = params.numUE+params.numCPE;
+K_mmW = params.numCPE;
 Ntx = params.num_antennas_per_sc;
 N_FWA = params.N_UE_FWA;
 N_cell = params.N_UE_cell;
 M = params.numSC;
-BETA = params.BETA;
+BETA = params.BETA_sc;
 R_gNB = params.R_sc;
 R_ue_mmW = params.R_ue_mmW_sc;
 R_ue_sub6 = params.R_ue_sub6_sc;

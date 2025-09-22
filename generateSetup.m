@@ -50,13 +50,12 @@ function [gainOverNoisedB,R_gNB,R_ue_mmW,R_ue_sub6,pilotIndex,D,D_small,APpositi
 %use this code for research that results in publications, please cite our
 %monograph as described above.
 L = size(params.locationsBS,1);
-K_mmW = params.numUE;
-K = params.numUE+params.numUE_sub6;
+K_FWA = params.numCPE;
+K = params.numUE+params.numCPE;
 Lmax = params.Lmax;
 N = params.num_antennas_per_gNB;
 N_UE_FWA = params.N_UE_FWA;
 N_UE_cell = params.N_UE_cell;
-coverageRange = params.coverageRange;
 coverageRange_sub6 = params.coverageRange_sub6;
 % tau_p = params.tau_p;
 ASD_varphi = params.ASD_varphi;
@@ -92,19 +91,17 @@ sigma_sf = 4;
 %Decorrelation distance of the shadow fading in (5.43)
 decorr = 9;
 
-%Height difference between an AP and a UE (in meters)
-% distanceVertical = 10;
-distanceVertical = params.ht - params.hr;
-
 %Define the antenna spacing (in number of wavelengths)
 antennaSpacing = 1/2; %Half wavelength distance
 
+%Height difference between an AP and a UE (in meters)
+distanceVertical = params.ht_bs - params.hr;
 
 %Prepare to save results
 gainOverNoisedB = zeros(L,K,nbrOfSetups);
 R_gNB = zeros(N,N,L,K,nbrOfSetups);
-R_ue_mmW = zeros(N_UE_FWA,N_UE_FWA,L,K_mmW,nbrOfSetups);
-R_ue_sub6 = zeros(N_UE_cell,N_UE_cell,L,K-K_mmW,nbrOfSetups);
+R_ue_mmW = zeros(N_UE_FWA,N_UE_FWA,L,K_FWA,nbrOfSetups);
+R_ue_sub6 = zeros(N_UE_cell,N_UE_cell,L,K-K_FWA,nbrOfSetups);
 distances = zeros(L,K,nbrOfSetups);
 pilotIndex = zeros(K,nbrOfSetups);
 % D = zeros(L,K,nbrOfSetups);
@@ -121,9 +118,9 @@ for n = 1:nbrOfSetups
     locationsBS = params.locationsBS;
     APpositions = locationsBS(:,1) + 1i*locationsBS(:,2);
     %Prepare to compute UE locations  
+    CPE_locations = params.CPE_locations;
     UE_locations = params.UE_locations;
-    UE_locations_sub6 = params.UE_locations_sub6;
-    UEpositions = [UE_locations; UE_locations_sub6];
+    UEpositions = [CPE_locations; UE_locations];
     UEpositions = UEpositions(:,1) + 1i*UEpositions(:,2);
     %Compute alternative AP locations by using wrap around
     % wrapHorizontal = repmat([-squareLength 0 squareLength],[3 1]);
@@ -236,17 +233,17 @@ for n = 1:nbrOfSetups
             %by scaling the normalized matrices with the channel gain
             if nargin>12
                 R_gNB(:,:,l,k,n) = db2pow(gainOverNoisedB(l,k,n))*functionRlocalscattering_mod(N,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
-                if (k<=K_mmW)
+                if (k<=K_FWA)
                     R_ue_mmW(:,:,l,k,n) = functionRlocalscattering_mod(N_UE_FWA,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
                 else
-                    R_ue_sub6(:,:,l,k-K_mmW,n) = functionRlocalscattering_mod(N_UE_cell,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
+                    R_ue_sub6(:,:,l,k-K_FWA,n) = functionRlocalscattering_mod(N_UE_cell,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
                 end
             else
                 R_gNB(:,:,l,k,n) = db2pow(gainOverNoisedB(l,k,n))*eye(N);  %If angular standard deviations are not specified, set i.i.d. fading
-                if (k<=K_mmW)
+                if (k<=K_FWA)
                     R_ue_mmW(:,:,l,k,n) = eye(N_UE_FWA);
                 else
-                    R_ue_sub6(:,:,l,k-K_mmW,n) = eye(N_UE_cell);
+                    R_ue_sub6(:,:,l,k-K_FWA,n) = eye(N_UE_cell);
                 end
             end
         end
@@ -292,7 +289,7 @@ for n = 1:nbrOfSetups
 %     end
     for k = 1:K
         [gains, idxs] = sort(gainOverNoise(:,k), 'descend');
-        if (k<=K_mmW)
+        if (k<=K_FWA)
             idxs_not_chosen = idxs(2:end);
         else
             idxs_not_chosen = idxs((Lmax+1):end);

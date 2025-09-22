@@ -50,13 +50,12 @@ function [gainOverNoisedB,R_gNB,R_ue_mmW,R_ue_sub6,D,D_small,APpositions,distanc
 %use this code for research that results in publications, please cite our
 %monograph as described above.
 L = size(params.locationsSC,1);
-K_mmW = params.numUE;
-K = params.numUE+params.numUE_sub6;
+K_mmW = params.numCPE;
+K = params.numUE+params.numCPE;
 Lmax = params.Lmax;
 N = params.num_antennas_per_sc;
 N_UE_FWA = params.N_UE_FWA;
 N_UE_cell = params.N_UE_cell;
-coverageRange = params.coverageRange;
 coverageRange_sub6 = params.coverageRange_sub6;
 % tau_p = params.tau_p;
 ASD_varphi = params.ASD_varphi;
@@ -94,7 +93,7 @@ decorr = 9;
 
 %Height difference between an AP and a UE (in meters)
 % distanceVertical = 10;
-distanceVertical = params.ht - params.hr;
+distanceVertical = params.ht_sc - params.hr;
 
 %Define the antenna spacing (in number of wavelengths)
 antennaSpacing = 1/2; %Half wavelength distance
@@ -106,6 +105,8 @@ R_gNB = zeros(N,N,L,K,nbrOfSetups);
 R_ue_mmW = zeros(N_UE_FWA,N_UE_FWA,L,K_mmW,nbrOfSetups);
 R_ue_sub6 = zeros(N_UE_cell,N_UE_cell,L,K-K_mmW,nbrOfSetups);
 distances = zeros(L,K,nbrOfSetups);
+D = ones(L,K,nbrOfSetups);
+D_small = zeros(L,K,nbrOfSetups);
 masterAPs = zeros(K,1); %the indices of master AP of each UE k 
 
 
