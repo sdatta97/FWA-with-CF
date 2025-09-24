@@ -1,8 +1,8 @@
 %Taken from 
 % https://in.mathworks.com/matlabcentral/answers/
 %   538119-how-to-import-to-matlab-many-text-files-as-table-type
-projectdir = '/Users/sdatta/FWA-with-CF/resultData/ratecomparisonResults';
-dinfo = dir(fullfile(projectdir, '*.csv'));   %use appropriate extension
+projectdir = '/Users/sdatta/FWA-with-CF/resultData/FWA_allotment_Results';
+dinfo = dir(fullfile(projectdir, 'results_*20lambdaBS_100lambdaUE*.csv'));   %use appropriate extension
 filenames = fullfile({dinfo.folder}, {dinfo.name});
 nfiles = length(filenames);
 tables = cell(nfiles,1);
@@ -22,16 +22,16 @@ colNames = combinedTable.Properties.VariableNames;
 % for i=1:(length(colNames)-4)
 %     changingVars{i} = colNames{i};
 % end
-changingVars = cell(1,length(colNames)-5);
-for i=1:(length(colNames)-5)
-    changingVars{i} = colNames{i};
-end
-% changingVars = cell(1,length(colNames)-2);
-% for i=1:(length(colNames)-2)
+% changingVars = cell(1,length(colNames)-5);
+% for i=1:(length(colNames)-5)
 %     changingVars{i} = colNames{i};
 % end
+changingVars = cell(1,length(colNames)-2);
+for i=1:(length(colNames)-2)
+    changingVars{i} = colNames{i};
+end
 
 summaryTable  = groupsummary(combinedTable,changingVars,{'mean','std','median'});
 
-writetable(summaryTable,'./rate_comp_data_vary_pf_bs_density_5.txt')
-writetable(summaryTable,'./rate_comp_data_vary_pf_bs_density_5.csv')
+writetable(summaryTable,'./rate_comp_fwa_cell_20_lambda_BS_100_lambda_UE_sc.txt')
+writetable(summaryTable,'./rate_comp_fwa_cell_20_lambda_BS_100_lambda_UE_sc.csv')

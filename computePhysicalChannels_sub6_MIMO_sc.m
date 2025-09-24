@@ -1,24 +1,24 @@
 function [phy_channel_sub6, phy_channel_sub6_est, phy_channel_mmW, phy_channel_mmW_est] = computePhysicalChannels_sub6_MIMO_sc(params)
 K = params.numUE+params.numCPE;
-K_mmW = params.numCPE;
+K_FWA = params.numCPE;
 Ntx = params.num_antennas_per_sc;
 N_FWA = params.N_UE_FWA;
 N_cell = params.N_UE_cell;
 M = params.numSC;
 BETA = params.BETA_sc;
 R_gNB = params.R_sc;
-R_ue_mmW = params.R_ue_mmW_sc;
-R_ue_sub6 = params.R_ue_sub6_sc;
-phy_channel_mmW = zeros(M,K_mmW,Ntx,N_FWA);
-phy_channel_sub6 = zeros(M,K-K_mmW,Ntx,N_cell);
+R_cpe = params.R_cpe_sc;
+R_ue = params.R_ue_sc;
+phy_channel_mmW = zeros(M,K_FWA,Ntx,N_FWA);
+phy_channel_sub6 = zeros(M,K-K_FWA,Ntx,N_cell);
 for m = 1:M
-    for k = 1:K_mmW
+    for k = 1:K_FWA
 %         phy_channel_mmW (m,k,:,:) = sqrt(0.5*BETA(m,k))*(randn(Ntx,N_mmW) + 1i*randn(Ntx,N_mmW));        
-        phy_channel_mmW (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k,1))*(randn(Ntx,N_FWA) + 1i*randn(Ntx,N_FWA))*sqrtm(R_ue_mmW(:,:,m,k,1));        
+        phy_channel_mmW (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k))*(randn(Ntx,N_FWA) + 1i*randn(Ntx,N_FWA))*sqrtm(R_cpe(:,:,m,k));        
     end
-    for k = 1:K-K_mmW
+    for k = 1:K-K_FWA
 %         phy_channel_sub6 (m,k,:,:) = sqrt(0.5*BETA(m,k+K_mmW))*(randn(Ntx,N_sub6) + 1i*randn(Ntx,N_sub6));        
-        phy_channel_sub6 (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k+K_mmW,1))*(randn(Ntx,N_cell) + 1i*randn(Ntx,N_cell))*sqrtm(R_ue_sub6(:,:,m,k,1));        
+        phy_channel_sub6 (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k+K_FWA))*(randn(Ntx,N_cell) + 1i*randn(Ntx,N_cell))*sqrtm(R_ue(:,:,m,k));        
     end 
 end
 phy_channel_mmW_est = phy_channel_mmW;
