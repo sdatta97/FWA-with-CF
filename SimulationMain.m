@@ -56,8 +56,8 @@ params.p = 100;
 % rho_tot_arr = [10:10:100, 200:100:1000, 2000:1000:10000];
 
 %Power factor division
-p_fac_arr = 10; %10.^(0:1:2);
-% params.p_fac = 10;
+% p_fac_arr = 10; %10.^(0:1:2);
+params.p_fac = 10;
 numCPE_arr = 10:10:50; %5:5:20;
 
 %Prepare to save simulation results
@@ -86,7 +86,7 @@ params.Lmax = 4;
 lb_thresh = 0; %0.1; %[0:0.05:0.1 0.5 1];
 params.preLogFactor = 1;
 %Number of channel realizations per setup
-params.nbrOfRealizations = 1;
+params.nbrOfRealizations = 100;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];

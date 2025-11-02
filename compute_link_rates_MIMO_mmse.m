@@ -11,6 +11,7 @@ N_CPE_FWA = size(channel_dl_FWA,4);
 N_UE = size(channel_dl,4);
 p_d = params.rho_tot; % 1*K;
 p_d_sc = params.rho_tot_sc; % 1*K;
+p_fac = params.p_fac;
 D = params.D;
 BETA = params.BETA;
 D_sc = params.D_sc;
@@ -162,7 +163,7 @@ for m = 1:M
     for k = 1:K
         if ismember(m,Serv{k})
             if (k<=K_FWA)
-                term = term + trace(reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])*reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])');
+                term = term + p_fac*trace(reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])*reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])');
             else
                 term = term + trace(reshape(dl_mmse_precoder(m,k-K_FWA,:,:),[N_BS,N_UE])*reshape(dl_mmse_precoder(m,k-K_FWA,:,:),[N_BS,N_UE])');
             end
@@ -170,6 +171,7 @@ for m = 1:M
     end
     if (term > 0)
         eta_eq(m,:) = (1/term)*D(m,:);
+        eta_eq(m,1:K_FWA) = p_fac*eta_eq(m,1:K_FWA);
     end
 end
 eta_eq_sc = zeros(S,K);
@@ -178,7 +180,7 @@ for s = 1:S
     for k = 1:K
         if ismember(s,Serv_sc{k})
             if (k<=K_FWA)
-                term = term + trace(reshape(dl_mmse_precoder_FWA_sc(s,k,:,:),[N_SC,N_CPE_FWA])*reshape(dl_mmse_precoder_FWA_sc(s,k,:,:),[N_SC,N_CPE_FWA])');
+                term = term + p_fac*trace(reshape(dl_mmse_precoder_FWA_sc(s,k,:,:),[N_SC,N_CPE_FWA])*reshape(dl_mmse_precoder_FWA_sc(s,k,:,:),[N_SC,N_CPE_FWA])');
             else
                 term = term + trace(reshape(dl_mmse_precoder_sc(m,k-K_FWA,:,:),[N_SC,N_UE])*reshape(dl_mmse_precoder_sc(s,k-K_FWA,:,:),[N_SC,N_UE])');
             end
@@ -186,6 +188,7 @@ for s = 1:S
     end
     if (term > 0)
         eta_eq_sc(m,:) = (1/term)*D_sc(m,:);
+        eta_eq_sc(m,1:K_FWA) = p_fac*eta_eq_sc(m,1:K_FWA);
     end
 end
 for k = 1:K_FWA

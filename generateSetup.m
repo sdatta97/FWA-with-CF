@@ -105,6 +105,7 @@ R_ue_sub6 = zeros(N_UE_cell,N_UE_cell,L,K-K_FWA);
 distances = zeros(L,K);
 pilotIndex = zeros(K,1);
 % D = zeros(L,K,nbrOfSetups);
+% D = [ones(L,K_FWA),zeros(L,K-K_FWA)];
 D = ones(L,K);
 D_small = zeros(L,K);
 
