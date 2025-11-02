@@ -131,8 +131,8 @@ for idxnumCPE = 1:length(numCPE_arr)
             noiseFigure = params.noiseFigure;
             sigma_sf = params.sigma_sf;
             Band = params.Band; %Communication bandwidth
-            [gainOverNoisedB,R_gNB,R_cpe,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,aID);
-            [gainOverNoisedB_sc,R_sc,R_cpe_sc,R_ue_sc,D_sc,D_small_sc,SCpositions,distances_sc] = generateSetup_SC(params,aID,pilotIndex,D,D_small,UEpositions);
+            [gainOverNoisedB,R_gNB,R_cpe,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,str2double(aID));
+            [gainOverNoisedB_sc,R_sc,R_cpe_sc,R_ue_sc,D_sc,D_small_sc,SCpositions,distances_sc] = generateSetup_SC(params,str2double(aID),pilotIndex,D,D_small,UEpositions);
             params.BETA = db2pow(gainOverNoisedB);   
             params.BETA_sc = db2pow(gainOverNoisedB_sc);   
             % params.D = D;
@@ -187,7 +187,7 @@ for idxnumCPE = 1:length(numCPE_arr)
                 'CPE_',num2str(lambda_BS(idxBSDensity)),...
                 'lambdaBS_',num2str(lambda_UE(idxUEDensity)),...
                 'lambdaUE_',num2str(deployRange),...
-            'deployRange_',num2str(aID));
+            'deployRange_',aID);
             recording_text_file_string = strcat(rateFolder,result_string,'.csv');
             fileID = fopen(recording_text_file_string,'w');
             output_categories = ['lambdaBS,','numCPE,','lambdaUE,',...
