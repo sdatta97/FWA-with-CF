@@ -2,7 +2,7 @@
 % https://in.mathworks.com/matlabcentral/answers/
 %   538119-how-to-import-to-matlab-many-text-files-as-table-type
 projectdir = '/Users/sdatta/Desktop/FWA_data/FWA_cell_revised_results';
-dinfo = dir(fullfile(projectdir, 'results_*50CPE_20lambdaBS_100lambdaUE*.csv'));   %use appropriate extension
+dinfo = dir(fullfile(projectdir, 'results_*20lambdaBS_100lambdaUE*.csv'));   %use appropriate extension
 filenames = fullfile({dinfo.folder}, {dinfo.name});
 nfiles = length(filenames);
 tables = cell(nfiles,1);
@@ -33,5 +33,5 @@ end
 
 summaryTable  = groupsummary(combinedTable,changingVars,{'mean','std','median'});
 
-writetable(summaryTable,'./rate_comp_fwa_cell_50CPE_20lambda_BS_100lambda_UE.txt')
-writetable(summaryTable,'./rate_comp_fwa_cell_50CPE_20lambda_BS_100lambda_UE.csv')
+writetable(summaryTable,'./rate_comp_fwa_cell_20lambda_BS_100lambda_UE_combined.txt')
+writetable(summaryTable,'./rate_comp_fwa_cell_20lambda_BS_100lambda_UE_combined.csv')
