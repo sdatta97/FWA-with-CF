@@ -13,13 +13,18 @@ phy_channel_mmW = zeros(M,K_FWA,Ntx,N_FWA);
 phy_channel_sub6 = zeros(M,K-K_FWA,Ntx,N_cell);
 for m = 1:M
     for k = 1:K_FWA
-%         phy_channel_mmW (m,k,:,:) = sqrt(0.5*BETA(m,k))*(randn(Ntx,N_mmW) + 1i*randn(Ntx,N_mmW));        
         phy_channel_mmW (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k,1))*(randn(Ntx,N_FWA) + 1i*randn(Ntx,N_FWA))*sqrtm(R_cpe(:,:,m,k,1));        
     end
     for k = 1:K-K_FWA
-%         phy_channel_sub6 (m,k,:,:) = sqrt(0.5*BETA(m,k+K_mmW))*(randn(Ntx,N_sub6) + 1i*randn(Ntx,N_sub6));        
         phy_channel_sub6 (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k+K_FWA,1))*(randn(Ntx,N_cell) + 1i*randn(Ntx,N_cell))*sqrtm(R_ue(:,:,m,k,1));        
     end 
+end
+if params.MOBILE
+    for m = 1:M
+        for k = 1:K-K_FWA
+            phy_channel_sub6 (m,k,:,:) = params.mob_rho*phy_channel_sub6 (m,k,:,:) + reshape(sqrt(1 - params.mob_rho^2)*sqrt(0.5)*sqrtm(R_gNB(:,:,m,k+K_FWA,1))*(randn(Ntx,N_cell) + 1i*randn(Ntx,N_cell))*sqrtm(R_ue(:,:,m,k,1)), [1,1,Ntx,N_cell]);        
+        end 
+    end
 end
 phy_channel_mmW_est = phy_channel_mmW;
 phy_channel_sub6_est = phy_channel_sub6;

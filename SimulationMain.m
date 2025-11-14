@@ -23,6 +23,12 @@ params.K_Factor = 9;         %dB -- %rician factor Ground UE  % if beta_gains=1
 params.RAYLEIGH=0;   %1= rayleigh, % 0=rician
 params.Perf_CSI =1;
 params.cov_area = 1; %0.25; % 4; %km
+params.MOBILE = 1;
+params.ue_velocity = 11.176; %25 mph
+params.Ts = 1e-5; %10us
+params.fc = 3.7e9; %3.7 GHz C-band
+params.c = 3e8; %speed of light
+params.mob_rho = (besselj(0,2*pi*params.Ts*params.ue_velocity*params.fc/params.c))^1000;
 %%
 params.TAU_P_K_by_two = 0; %1;  
 params.CH_estimation = 0;  % 1= have channel estimation
@@ -52,19 +58,11 @@ params.ASD_theta = 0; %deg2rad(15);  %elevation angle
 %Total uplink transmit power per UE (mW)
 params.p = 100;
 
-%Total downlink transmit power per AP (mW)
-% rho_tot_arr = [10:10:100, 200:100:1000, 2000:1000:10000];
-
 %Power factor division
 p_fac_arr = [1 20:10:100];
 numCPE_arr = 10:10:50; %5:5:20;
 
 %Prepare to save simulation results
-
-% rng(2,'twister');
-%%
-% load('params.mat')
-params.simTime = 60*60; %sec Total Simulation time should be more than 100.
 %% Room Setup, UE placement, UE height
 params.deployRange = 200; %20:20:100;
 params.deployRange_sub6 = 1000;
