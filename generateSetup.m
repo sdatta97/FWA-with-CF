@@ -52,7 +52,7 @@ function [gainOverNoisedB,R_gNB,R_ue_mmW,R_ue_sub6,pilotIndex,D,D_small,APpositi
 L = size(params.locationsBS,1);
 K_FWA = params.numCPE;
 K = params.numUE+params.numCPE;
-Lmax = params.Lmax;
+Lmax = 1; %params.Lmax;
 N = params.num_antennas_per_gNB;
 N_UE_FWA = params.N_UE_FWA;
 N_UE_cell = params.N_UE_cell;
