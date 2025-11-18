@@ -58,7 +58,7 @@ params.noiseFigure = 9; % gue
 params.sigma_sf =4;
 params.Band = 400e6; %Communication bandwidth
 
-params.SC = 0; %0 - CF, 1 - SC
+params.SC = 1; %0 - CF, 1 - SC
 %% Define simulation setup
 
 %Angular standard deviation in the local scattering model (in radians)
