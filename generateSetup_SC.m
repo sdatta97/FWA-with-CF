@@ -135,7 +135,11 @@ for k = 1:K
     %Compute distances assuming that the APs are 10 m above the UEs
     [distanceAPstoUE,whichpos] = min(abs(APpositionsWrapped - repmat(UEposition,size(APpositionsWrapped))),[],2);
     distances(:,k) = sqrt(distanceVertical^2+distanceAPstoUE.^2);
-    
+    if (k <= K_FWA)
+        distanceVertical = params.ht_bs - params.hr_cpe;
+    else
+        distanceVertical = params.ht_bs - params.hr;
+    end
     %If this is not the first UE
     if k-1>0
         

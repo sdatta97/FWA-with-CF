@@ -27,7 +27,7 @@ params.cov_area = 1; %0.25; % 4; %km
 params.MOBILE = 1;
 params.ue_velocity = 11.176; %25 mph
 params.Ts = 1.67e-5; %10us
-params.fc = 7.9e9; %3.7 GHz C-band
+params.fc = 3.7e9; %3.7 GHz C-band
 params.c = 3e8; %speed of light
 params.coherence_time = 1e-3;
 params.n_samples = floor(params.coherence_time/params.Ts);
@@ -36,9 +36,9 @@ params.mob_rho = besselj(0,2*pi*params.Ts*params.ue_velocity*params.fc/params.c)
 %% Economics params
 params.price_cell_per_bit = 4;
 params.price_FWA_per_bit = 0.14;
-params.r_min_cell = 10e6;
-params.r_min_FWA = 50e6;
-params.r_max_FWA = 50e6;
+params.r_min_cell = 35e6;
+params.r_min_FWA = 0;%50e6;
+params.r_max_FWA = 100e6;
 %%
 params.TAU_P_K_by_two = 0; %1;  
 params.CH_estimation = 0;  % 1= have channel estimation
@@ -47,8 +47,6 @@ params.LB=1;  %Lower bound
 params.UB =1;  %Upper bound
 params.no_of_rea = 1;     % no.of channel realizations
 %%
-% snr_db = -50:10:40;
-params.snr_db = 40;
 params.ASD_VALUE = 0;%[0,0.25,0.5,0.75,1];  % [0,30,10]; %
 params.ASD_CORR = 0;
 params.Kt_Kr_vsUE  = 0; %0.175^2; %0.175^2; %[1,2,3,4];  %to save 1=AP 0.1,UE=0.1;  2=AP 0.1,UE=0.3;  3=AP 0.3,UE=0.1
@@ -56,7 +54,7 @@ params.Kt_Kr_vsUE  = 0; %0.175^2; %0.175^2; %[1,2,3,4];  %to save 1=AP 0.1,UE=0.
 params.pilot_pow = 100;  % 0.1W   % UL pilot. power (W)
 params.noiseFigure = 9; % gue
 params.sigma_sf =4;
-params.Band = 400e6; %Communication bandwidth
+params.Band = 100e6; %Communication bandwidth
 
 params.SC = 1; %0 - CF, 1 - SC
 %% Define simulation setup
@@ -69,7 +67,7 @@ params.ASD_theta = 0; %deg2rad(15);  %elevation angle
 params.p = 100;
 
 %Power factor division
-p_fac_arr = [1, 5:5:50];
+p_fac_arr = 10; %[1, 5:5:50];
 numCPE_all = 50; %5:5:20;
 
 %Prepare to save simulation results
@@ -78,17 +76,18 @@ params.deployRange = 200; %20:20:100;
 params.coverageRange_sub6 = 430;
 params.num_antennas_per_gNB = 256;
 params.num_antennas_per_sc = 64;
-params.rho_tot = 10^(3.6)*params.num_antennas_per_gNB; %200;
-params.rho_tot_sc = 10^(3.6)*params.num_antennas_per_sc;
+params.rho_tot = 10^(0.1*75)*(params.Band/1e8); %10^(3.6)*params.num_antennas_per_gNB; %200;
+params.rho_tot_sc = 10^(0.1*55); %10^(3.6)*params.num_antennas_per_sc;
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 1; %4;
 params.hr = 1;
+params.hr_cpe = 3;
 params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
-lambda_SC = 20; %([5 6 7 8 9 10]).^2;
-lambda_UE = 200; %250:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
+lambda_SC = 0; %([5 6 7 8 9 10]).^2;
+lambda_UE = 0:250:2000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
 params.Lmax = 3;
 params.preLogFactor = 1;
 %Number of channel realizations per setup
@@ -127,7 +126,6 @@ for idxUEDensity = 1:length(lambda_UE)
         max_FWA_util = 0;
         K_FWA_max = 0;
         p_fac_max = 0;
-        snr_db = params.snr_db;
         ASD_VALUE = params.ASD_VALUE;
         ASD_CORR = params.ASD_CORR;
         Kt_Kr_vsUE = params.Kt_Kr_vsUE;
@@ -140,23 +138,57 @@ for idxUEDensity = 1:length(lambda_UE)
         noiseFigure = params.noiseFigure;
         sigma_sf = params.sigma_sf;
         Band = params.Band; %Communication bandwidth
-        for idxnumCPE = 0:10:numCPE_all
+        % for p_idx = 1:length(p_fac_arr)
+        %     params.p_fac = p_fac_arr(p_idx);
+        params.p_fac = 1;
+        params.numCPE = 0;
+        [~,CPE_idxs] = maxk(sum(real(gainOverNoisedB(:,1:numCPE_all).*D(:,1:numCPE_all)),1),params.numCPE);
+        params.CPE_locations = CPE_locations(CPE_idxs,:);
+        K_FWA = params.numCPE;
+        K = params.numCPE + params.numUE; 
+        params.BETA = db2pow(gainOverNoisedB(:,[CPE_idxs,1+numCPE_all:end]));   
+        params.BETA_sc = db2pow(gainOverNoisedB_sc(:,[CPE_idxs,1+numCPE_all:end]));   
+        if params.SC
+            params.D = D_small(:,[CPE_idxs,1+numCPE_all:end]);
+            params.D_sc = D_small_sc(:,[CPE_idxs,1+numCPE_all:end]);
+        else
+            params.D = D(:,[CPE_idxs,1+numCPE_all:end]);
+            params.D_sc = D_sc(:,[CPE_idxs,1+numCPE_all:end]);
+        end
+        params.R_gNB = R_gNB(:,:,:,[CPE_idxs,1+numCPE_all:end]);
+        params.R_sc = R_sc(:,:,:,[CPE_idxs,1+numCPE_all:end]);
+        params.R_cpe = R_cpe(:,:,:,CPE_idxs);
+        params.R_ue = R_ue; 
+        params.R_cpe_sc = R_cpe_sc(:,:,:,CPE_idxs);
+        params.R_ue_sc = R_ue_sc; 
+        nbrOfRealizations = params.nbrOfRealizations;
+        rate_dl = zeros(K,nbrOfRealizations);
+        for n = 1:nbrOfRealizations
+            [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA] = computePhysicalChannels_sub6_MIMO(params);
+            [channel_dl_sc, channel_est_dl_sc,channel_dl_FWA_sc, channel_est_dl_FWA_sc] = computePhysicalChannels_sub6_MIMO_sc(params);
+            rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_dl_sc, channel_est_dl, channel_est_dl_sc, channel_dl_FWA, channel_dl_FWA_sc, channel_est_dl_FWA, channel_est_dl_FWA_sc);                                              
+        end
+        mean_rate_dl_cell = mean(rate_dl,2);
+        if (params.numUE > 0)
+            params.Band = max(params.Band*(1-params.r_min_cell/min(mean_rate_dl_cell)),0);
+        end
+        mean_rate_dl_cell = mean_rate_dl_cell*(1-params.r_min_cell/min(mean_rate_dl_cell)); 
+        numUE = params.numUE;
+        for idxnumCPE = 10:10:numCPE_all
+            params.numUE = 0;
             params.numCPE = idxnumCPE;
             [~,CPE_idxs] = maxk(sum(real(gainOverNoisedB(:,1:numCPE_all).*D(:,1:numCPE_all)),1),idxnumCPE);
             params.CPE_locations = CPE_locations(CPE_idxs,:);
             K_FWA = params.numCPE;
             K = params.numCPE + params.numUE; 
-            % [gainOverNoisedB,R_gNB,R_cpe,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,str2double(aID));
-            % [gainOverNoisedB_sc,R_sc,R_cpe_sc,R_ue_sc,D_sc,D_small_sc,SCpositions,distances_sc] = generateSetup_SC(params,str2double(aID),pilotIndex,D,D_small,UEpositions);
             params.BETA = db2pow(gainOverNoisedB(:,[CPE_idxs,1+numCPE_all:end]));   
             params.BETA_sc = db2pow(gainOverNoisedB_sc(:,[CPE_idxs,1+numCPE_all:end]));   
-            % params.D = D;
             if params.SC
-                params.D = D_small(:,[CPE_idxs,1+numCPE_all:end]);
-                params.D_sc = D_small_sc(:,[CPE_idxs,1+numCPE_all:end]);
+                params.D = D_small(:,CPE_idxs);
+                params.D_sc = D_small_sc(:,CPE_idxs);
             else
-                params.D = D(:,[CPE_idxs,1+numCPE_all:end]);
-                params.D_sc = D_sc(:,[CPE_idxs,1+numCPE_all:end]);
+                params.D = D(:,CPE_idxs);
+                params.D_sc = D_sc(:,CPE_idxs);
             end
             params.R_gNB = R_gNB(:,:,:,[CPE_idxs,1+numCPE_all:end]);
             params.R_sc = R_sc(:,:,:,[CPE_idxs,1+numCPE_all:end]);
@@ -164,35 +196,32 @@ for idxUEDensity = 1:length(lambda_UE)
             params.R_ue = R_ue; 
             params.R_cpe_sc = R_cpe_sc(:,:,:,CPE_idxs);
             params.R_ue_sc = R_ue_sc; 
-            nbrOfRealizations = params.nbrOfRealizations;
-            rate_dl = zeros(K,nbrOfRealizations);
-            for p_idx = 1:length(p_fac_arr)
-                params.p_fac = p_fac_arr(p_idx);
-                for n = 1:nbrOfRealizations
-                    [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA] = computePhysicalChannels_sub6_MIMO(params);
-                    [channel_dl_sc, channel_est_dl_sc,channel_dl_FWA_sc, channel_est_dl_FWA_sc] = computePhysicalChannels_sub6_MIMO_sc(params);
-                    rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_dl_sc, channel_est_dl, channel_est_dl_sc, channel_dl_FWA, channel_dl_FWA_sc, channel_est_dl_FWA, channel_est_dl_FWA_sc);                                              
-                end
-                mean_rate_dl = mean(rate_dl,2);
-                [cell_util, FWA_util] = computeUtility(params,mean_rate_dl);
-                obj = params.price_cell_per_bit*sum(cell_util) + params.price_FWA_per_bit*sum(FWA_util);
-                if (obj >= max_obj)
-                % if ((sum(cell_util) >= max_cell_util) && (sum(FWA_util) >= max_FWA_util))
-                    max_obj = obj;
-                    max_cell_util = sum(cell_util);
-                    max_FWA_util = sum(FWA_util);
-                    K_FWA_max = K_FWA;
-                    p_fac_max = params.p_fac;
-                else
-                    break;
-                end
+            rate_dl = zeros(K_FWA,nbrOfRealizations);
+            for n = 1:nbrOfRealizations
+                [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA] = computePhysicalChannels_sub6_MIMO(params);
+                [channel_dl_sc, channel_est_dl_sc,channel_dl_FWA_sc, channel_est_dl_FWA_sc] = computePhysicalChannels_sub6_MIMO_sc(params);
+                rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_dl_sc, channel_est_dl, channel_est_dl_sc, channel_dl_FWA, channel_dl_FWA_sc, channel_est_dl_FWA, channel_est_dl_FWA_sc);                                              
+            end
+            mean_rate_dl_FWA = mean(rate_dl,2);
+            params.numUE = numUE;
+            [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
+            obj = params.price_cell_per_bit*sum(cell_util) + params.price_FWA_per_bit*sum(FWA_util);
+            if (obj > max_obj)
+                max_obj = obj;
+                max_cell_util = sum(cell_util);
+                max_FWA_util = sum(FWA_util);
+                K_FWA_max = K_FWA;
+                % p_fac_max = params.p_fac;
+            else
+                break;
             end
         end
+        % end
         %% Recording the Results
     
         %Taking care of folder directory creation etc
         dataFolder = 'resultData';
-        rateFolder = strcat(dataFolder,'/FWA_cell_revised_results');
+        rateFolder = strcat(dataFolder,'/FWA_cell_results');
         if not(isfolder(dataFolder))
             mkdir(dataFolder)
         end

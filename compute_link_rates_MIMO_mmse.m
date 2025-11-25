@@ -287,12 +287,12 @@ for k = 1:K-K_FWA
             end
         end
         for q = 1:K_FWA
-            if (q~=k)
-              MUI_Cell(k,n) = MUI_Cell(k,n) + norm(reshape(D_Cell_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
-            end
+            MUI_Cell(k,n) = MUI_Cell(k,n) + norm(reshape(D_Cell_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
         end
         for q = 1:K-K_FWA
-           MUI_Cell(k,n) = MUI_Cell(k,n) + norm(reshape(D_Cell_Cell(k,q,n,:),[1,N_UE]))^2;
+            if (q~=k)
+                MUI_Cell(k,n) = MUI_Cell(k,n) + norm(reshape(D_Cell_Cell(k,q,n,:),[1,N_UE]))^2;
+            end
         end
         snr_num_Cell(k,n) = DS_Cell(k,n);
         snr_den_Cell(k,n) = MSI_Cell(k,n) + MUI_Cell(k,n) + noise_Cell(k,n);

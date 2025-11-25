@@ -94,9 +94,6 @@ decorr = 9;
 %Define the antenna spacing (in number of wavelengths)
 antennaSpacing = 1/2; %Half wavelength distance
 
-%Height difference between an AP and a UE (in meters)
-distanceVertical = params.ht_bs - params.hr;
-
 %Prepare to save results
 gainOverNoisedB = zeros(L,K);
 R_gNB = zeros(N,N,L,K);
@@ -138,6 +135,12 @@ for k = 1:K
     UEposition = UEpositions(k);        
     %Compute distances assuming that the APs are 10 m above the UEs
     [distanceAPstoUE,whichpos] = min(abs(APpositionsWrapped - repmat(UEposition,size(APpositionsWrapped))),[],2);
+    %Height difference between an AP and a UE (in meters)
+    if (k <= K_FWA)
+        distanceVertical = params.ht_bs - params.hr_cpe;
+    else
+        distanceVertical = params.ht_bs - params.hr;
+    end
     distances(:,k) = sqrt(distanceVertical^2+distanceAPstoUE.^2);
     
     %If this is not the first UE
