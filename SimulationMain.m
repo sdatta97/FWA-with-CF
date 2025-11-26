@@ -91,7 +91,7 @@ lambda_UE = 0:250:2000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
 params.Lmax = 3;
 params.preLogFactor = 1;
 %Number of channel realizations per setup
-params.nbrOfRealizations = 1;
+params.nbrOfRealizations = 10;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
