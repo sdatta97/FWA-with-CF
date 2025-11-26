@@ -27,7 +27,7 @@ params.cov_area = 1; %0.25; % 4; %km
 params.MOBILE = 1;
 params.ue_velocity = 11.176; %25 mph
 params.Ts = 1.67e-5; %10us
-params.fc = 3.7e9; %3.7 GHz C-band
+params.fc = 7.9e9; %7.9 GHz FR3
 params.c = 3e8; %speed of light
 params.coherence_time = 1e-3;
 params.n_samples = floor(params.coherence_time/params.Ts);
@@ -54,7 +54,7 @@ params.Kt_Kr_vsUE  = 0; %0.175^2; %0.175^2; %[1,2,3,4];  %to save 1=AP 0.1,UE=0.
 params.pilot_pow = 100;  % 0.1W   % UL pilot. power (W)
 params.noiseFigure = 9; % gue
 params.sigma_sf =4;
-params.Band = 100e6; %Communication bandwidth
+params.Band = 400e6; %Communication bandwidth
 
 params.SC = 1; %0 - CF, 1 - SC
 %% Define simulation setup
