@@ -27,7 +27,7 @@ params.cov_area = 1; %0.25; % 4; %km
 params.MOBILE = 1;
 params.ue_velocity = 11.176; %25 mph
 params.Ts = 1.67e-5; %10us
-params.fc = 7.9e9; %7.9 GHz FR3
+params.fc = 3.7e9; %7.9 GHz FR3
 params.c = 3e8; %speed of light
 params.coherence_time = 1e-3;
 params.n_samples = floor(params.coherence_time/params.Ts);
@@ -54,7 +54,7 @@ params.Kt_Kr_vsUE  = 0; %0.175^2; %0.175^2; %[1,2,3,4];  %to save 1=AP 0.1,UE=0.
 params.pilot_pow = 100;  % 0.1W   % UL pilot. power (W)
 params.noiseFigure = 9; % gue
 params.sigma_sf =4;
-params.Band = 400e6; %Communication bandwidth
+params.Band = 100e6; %Communication bandwidth
 
 params.SC = 1; %0 - CF, 1 - SC
 %% Define simulation setup
@@ -74,8 +74,8 @@ numCPE_all = 50; %5:5:20;
 %% Room Setup, UE placement, UE height
 params.deployRange = 200; %20:20:100;
 params.coverageRange_sub6 = 430;
-params.num_antennas_per_gNB = 256;
-params.num_antennas_per_sc = 64;
+params.num_antennas_per_gNB = 64;
+params.num_antennas_per_sc = 16;
 params.rho_tot = 10^(0.1*75)*(params.Band/1e8); %10^(3.6)*params.num_antennas_per_gNB; %200;
 params.rho_tot_sc = 10^(0.1*55); %10^(3.6)*params.num_antennas_per_sc;
 %Number of antennas per UE
@@ -87,7 +87,7 @@ params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 0:250:2000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
+lambda_UE = 0:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
 params.Lmax = 3;
 params.preLogFactor = 1;
 %Number of channel realizations per setup
