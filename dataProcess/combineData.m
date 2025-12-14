@@ -1,13 +1,18 @@
 %Taken from 
 % https://in.mathworks.com/matlabcentral/answers/
 %   538119-how-to-import-to-matlab-many-text-files-as-table-type
-projectdir = '/Users/sdatta/Desktop/FWA_data/fc_c_band/FWA_cell_results';
+% projectdir = '/Users/sdatta/Desktop/FWA_data/fc_c_band/FWA_cell_results';
+projectdir = '/Users/sdatta/FWA-with-CF/resultData/FWA_cell_new_results';
 dinfo = dir(fullfile(projectdir, '*.csv'));   %use appropriate extension
 filenames = fullfile({dinfo.folder}, {dinfo.name});
 nfiles = length(filenames);
 tables = cell(nfiles,1);
 for K = 1 : nfiles
-    tables{K} = readtable(filenames{K});
+    try
+        tables{K} = readtable(filenames{K});
+   catch Exception
+        disp (Exception);
+    end
 end
 
 combinedTable = vertcat(tables{:});
@@ -18,10 +23,10 @@ colNames = combinedTable.Properties.VariableNames;
 % for i=1:(length(colNames)-6)
 %     changingVars{i} = colNames{i};
 % end
-changingVars = cell(1,length(colNames)-4);
-for i=1:(length(colNames)-4)
-    changingVars{i} = colNames{i};
-end
+% changingVars = cell(1,length(colNames)-4);
+% for i=1:(length(colNames)-4)
+%     changingVars{i} = colNames{i};
+% end
 % changingVars = cell(1,length(colNames)-5);
 % for i=1:(length(colNames)-5)
 %     changingVars{i} = colNames{i};
@@ -30,8 +35,12 @@ end
 % for i=1:(length(colNames)-2)
 %     changingVars{i} = colNames{i};
 % end
+changingVars = cell(1,length(colNames)-1);
+for i=1:(length(colNames)-1)
+    changingVars{i} = colNames{i};
+end
 
 summaryTable  = groupsummary(combinedTable,changingVars,{'mean','std','median'});
 
-writetable(summaryTable,'./K_comp_fwa_cell_mc_50CPE_5lBS_varyUEdensity_c_band.txt')
-writetable(summaryTable,'./K_comp_fwa_cell_mc_50CPE_5lBS_varyUEdensity_c_band.csv')
+writetable(summaryTable,'./K_comp_fwa_cell_mc_50CPE_5lBS_varyUEdensity_c_band_128ntx_new.txt')
+writetable(summaryTable,'./K_comp_fwa_cell_mc_50CPE_5lBS_varyUEdensity_c_band_128ntx_new.csv')

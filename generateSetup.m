@@ -1,4 +1,4 @@
-function [gainOverNoisedB,R_gNB,R_ue_mmW,R_ue_sub6,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,seed)
+function [gainOverNoisedB,R_gNB,R_cpe,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,seed)
 %This function generates realizations of the simulation setup described in
 %Section 5.3.
 %
@@ -97,8 +97,8 @@ antennaSpacing = 1/2; %Half wavelength distance
 %Prepare to save results
 gainOverNoisedB = zeros(L,K);
 R_gNB = zeros(N,N,L,K);
-R_ue_mmW = zeros(N_UE_FWA,N_UE_FWA,L,K_FWA);
-R_ue_sub6 = zeros(N_UE_cell,N_UE_cell,L,K-K_FWA);
+R_cpe = zeros(N_UE_FWA,N_UE_FWA,L,K_FWA);
+R_ue = zeros(N_UE_cell,N_UE_cell,L,K-K_FWA);
 distances = zeros(L,K);
 pilotIndex = zeros(K,1);
 % D = zeros(L,K,nbrOfSetups);
@@ -234,16 +234,16 @@ for k = 1:K
         if nargin>12
             R_gNB(:,:,l,k) = db2pow(gainOverNoisedB(l,k))*functionRlocalscattering_mod(N,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
             if (k<=K_FWA)
-                R_ue_mmW(:,:,l,k) = functionRlocalscattering_mod(N_UE_FWA,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
+                R_cpe(:,:,l,k) = functionRlocalscattering_mod(N_UE_FWA,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
             else
-                R_ue_sub6(:,:,l,k-K_FWA) = functionRlocalscattering_mod(N_UE_cell,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
+                R_ue(:,:,l,k-K_FWA) = functionRlocalscattering_mod(N_UE_cell,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
             end
         else
             R_gNB(:,:,l,k) = db2pow(gainOverNoisedB(l,k))*eye(N);  %If angular standard deviations are not specified, set i.i.d. fading
             if (k<=K_FWA)
-                R_ue_mmW(:,:,l,k) = eye(N_UE_FWA);
+                R_cpe(:,:,l,k) = eye(N_UE_FWA);
             else
-                R_ue_sub6(:,:,l,k-K_FWA) = eye(N_UE_cell);
+                R_ue(:,:,l,k-K_FWA) = eye(N_UE_cell);
             end
         end
     end
