@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --output=./logs/%a_%A.out
 #SBATCH --error=./logs/%a_%A.err
-#SBATCH --account=pr_181_general
+#SBATCH --account=torch_pr_174_general
 
 #SBATCH --job-name=FWB_with_CF
 #SBATCH --mail-type=END
