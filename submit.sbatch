@@ -13,7 +13,7 @@
 
 
 module purge
-module load matlab/2023a
+module load matlab/2025b
 
 echo "$SLURM_ARRAY_TASK_ID"
 
