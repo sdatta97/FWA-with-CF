@@ -76,16 +76,16 @@ params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 0:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
+lambda_UE = 750; % 0:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
 params.Lmax = 3;
 params.preLogFactor = 1;
 params.loss_pc_FWA = 5;
 %Number of channel realizations per setup
-params.nbrOfRealizations = 100;
+params.nbrOfRealizations = 10;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 1e6*(10:20:90);
+r_min_arr = 90e6; %1e6*(10:20:90);
 %% Simulation FR1 setup
 %% CPE locations
 RCPE =  params.deployRange*sqrt(rand(numCPE_all,1)); %location of UEs (distance from origin)
@@ -221,26 +221,27 @@ for idxBSDensity = 1:length(lambda_BS)
             rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
         end
         mean_rate_dl_FWA = mean(rate_dl,2);
+        Band_FWA = params.Band;
         for idxrmin = 1:length(r_min_arr)
             params.r_min_FWA = r_min_arr(idxrmin);
             K_FWA_max = 0;
+            params.Band = Band_FWA;
             if (params.Band > 0)
-                new_CPE_idxs = find(mean_rate_dl_FWA./params.Band > 2*(params.r_min_FWA./params.Band));
-                K_FWA_max = K_FWA_max + numel(new_CPE_idxs);
-                params.CPE_locations = CPE_locations;
-                params.CPE_locations(new_CPE_idxs,:) = [];                
-                params.numCPE = numCPE_all - numel(new_CPE_idxs);
-                if (~isempty(new_CPE_idxs))
+                allotted_CPE_idxs = find(mean_rate_dl_FWA./params.Band > 2*(params.r_min_FWA./params.Band));
+                if (~isempty(allotted_CPE_idxs))
+                    K_FWA_max = K_FWA_max + numel(allotted_CPE_idxs);
+                    params.CPE_locations = CPE_locations(allotted_CPE_idxs,:);                
+                    params.numCPE = numel(allotted_CPE_idxs);
                     K_FWA = params.numCPE;
                     K = params.numCPE + params.numUE; 
-                    params.BETA = db2pow(gainOverNoisedB(:,new_CPE_idxs));   
+                    params.BETA = db2pow(gainOverNoisedB(:,allotted_CPE_idxs));   
                     if params.SC
-                        params.D = D_small(:,new_CPE_idxs);
+                        params.D = D_small(:,allotted_CPE_idxs);
                     else
-                        params.D = D(:,new_CPE_idxs);
+                        params.D = D(:,allotted_CPE_idxs);
                     end
-                    params.R_gNB = R_gNB(:,:,:,new_CPE_idxs);
-                    params.R_cpe = R_cpe(:,:,:,new_CPE_idxs);
+                    params.R_gNB = R_gNB(:,:,:,allotted_CPE_idxs);
+                    params.R_cpe = R_cpe(:,:,:,allotted_CPE_idxs);
                     params.R_ue = []; 
                     nbrOfRealizations = params.nbrOfRealizations;
                     rate_dl = zeros(K,nbrOfRealizations);
@@ -252,13 +253,14 @@ for idxBSDensity = 1:length(lambda_BS)
                     band_allotted = params.r_min_FWA/min(mean_rate_dl_FWA_new./params.Band);
                     params.Band = params.Band - band_allotted;
                 end
-                CPE_old_idxs = new_CPE_idxs;
-                new_CPE_idxs = [];
+                params.CPE_locations = CPE_locations;
+                params.CPE_locations(allotted_CPE_idxs,:) = [];                
+                params.numCPE = numCPE_all - numel(allotted_CPE_idxs);
                 if (params.numCPE > 0)
                     K_FWA = params.numCPE;
                     K = params.numCPE + params.numUE; 
                     CPE_idxs = 1:1:numCPE_all;
-                    CPE_idxs(CPE_old_idxs) = [];
+                    CPE_idxs(allotted_CPE_idxs) = [];
                     params.BETA = db2pow(gainOverNoisedB(:,CPE_idxs));   
                     if params.SC
                         params.D = D_small(:,CPE_idxs);
@@ -276,36 +278,7 @@ for idxBSDensity = 1:length(lambda_BS)
                     end
                     mean_rate_dl_FWA = mean(rate_dl,2);
                     [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
-                    new_CPE_idxs = find(FWA_util>0);
-                    K_FWA_max = K_FWA_max + numel(new_CPE_idxs);
-                    params.Band = max(params.Band - params.r_min_FWA/(min(mean_rate_dl_FWA)./params.Band),0);                    
-                    params.CPE_locations(new_CPE_idxs,:) = [];                
-                    params.numCPE = params.numCPE - numel(new_CPE_idxs);
-                end
-                if ((params.Band > 0) && (params.numCPE>0))
-                    K_FWA = params.numCPE;
-                    K = params.numCPE + params.numUE; 
-                    CPE_idxs = 1:1:numCPE_all;
-                    CPE_idxs(CPE_old_idxs) = [];
-                    CPE_idxs(new_CPE_idxs) = [];
-                    params.BETA = db2pow(gainOverNoisedB(:,CPE_idxs));   
-                    if params.SC
-                        params.D = D_small(:,CPE_idxs);
-                    else
-                        params.D = D(:,CPE_idxs);
-                    end
-                    params.R_gNB = R_gNB(:,:,:,CPE_idxs);
-                    params.R_cpe = R_cpe(:,:,:,CPE_idxs);
-                    params.R_ue = []; 
-                    nbrOfRealizations = params.nbrOfRealizations;
-                    rate_dl = zeros(K,nbrOfRealizations);
-                    for n = 1:nbrOfRealizations
-                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA] = computePhysicalChannels_sub6_MIMO(params);
-                        rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
-                    end
-                    mean_rate_dl_FWA = mean(rate_dl,2);
-                    [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
-                    K_FWA_max = K_FWA_max + numel(find(FWA_util>0));
+                    K_FWA_max = K_FWA_max + sum(FWA_util>0);
                 end
             end
             params.CPE_locations = CPE_locations;
