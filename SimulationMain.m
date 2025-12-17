@@ -76,16 +76,16 @@ params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 750; % 0:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
+lambda_UE = 0:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
 params.Lmax = 3;
 params.preLogFactor = 1;
 params.loss_pc_FWA = 5;
 %Number of channel realizations per setup
-params.nbrOfRealizations = 10;
+params.nbrOfRealizations = 100;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 90e6; %1e6*(10:20:90);
+r_min_arr = 1e6*(10:20:90);
 %% Simulation FR1 setup
 %% CPE locations
 RCPE =  params.deployRange*sqrt(rand(numCPE_all,1)); %location of UEs (distance from origin)
