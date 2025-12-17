@@ -11,7 +11,7 @@ if (isempty(aID))
 end
 if(isempty(aID))
     warning('aID is empty. Replacing it with 0010.')
-    aID = '0099';
+    aID = '0052';
 end
 % for aID = 1:99
 %RNG seed.
@@ -227,11 +227,10 @@ for idxBSDensity = 1:length(lambda_BS)
             if (params.Band > 0)
                 new_CPE_idxs = find(mean_rate_dl_FWA./params.Band > 2*(params.r_min_FWA./params.Band));
                 K_FWA_max = K_FWA_max + numel(new_CPE_idxs);
+                params.CPE_locations = CPE_locations;
+                params.CPE_locations(new_CPE_idxs,:) = [];                
+                params.numCPE = numCPE_all - numel(new_CPE_idxs);
                 if (~isempty(new_CPE_idxs))
-                    CPE_locations = params.CPE_locations;
-                    numCPE = params.numCPE;
-                    params.CPE_locations = params.CPE_locations(new_CPE_idxs,:);
-                    params.numCPE = size(params.CPE_locations,1);
                     K_FWA = params.numCPE;
                     K = params.numCPE + params.numUE; 
                     params.BETA = db2pow(gainOverNoisedB(:,new_CPE_idxs));   
@@ -253,15 +252,12 @@ for idxBSDensity = 1:length(lambda_BS)
                     band_allotted = params.r_min_FWA/min(mean_rate_dl_FWA_new./params.Band);
                     params.Band = params.Band - band_allotted;
                 end
-                params.CPE_locations = CPE_locations;
-                params.CPE_locations(new_CPE_idxs,:) = [];                
-                params.numCPE = numCPE - numel(new_CPE_idxs);
-                idxs_new = [];
+                CPE_old_idxs = new_CPE_idxs;
+                new_CPE_idxs = [];
                 if (params.numCPE > 0)
                     K_FWA = params.numCPE;
                     K = params.numCPE + params.numUE; 
-                    CPE_old_idxs = new_CPE_idxs;
-                    CPE_idxs = 1:1:numCPE;
+                    CPE_idxs = 1:1:numCPE_all;
                     CPE_idxs(CPE_old_idxs) = [];
                     params.BETA = db2pow(gainOverNoisedB(:,CPE_idxs));   
                     if params.SC
@@ -280,18 +276,18 @@ for idxBSDensity = 1:length(lambda_BS)
                     end
                     mean_rate_dl_FWA = mean(rate_dl,2);
                     [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
-                    idxs_new = find(FWA_util>0);
-                    K_FWA_max = K_FWA_max + numel(idxs_new);
+                    new_CPE_idxs = find(FWA_util>0);
+                    K_FWA_max = K_FWA_max + numel(new_CPE_idxs);
                     params.Band = max(params.Band - params.r_min_FWA/(min(mean_rate_dl_FWA)./params.Band),0);                    
-                    params.CPE_locations(idxs_new,:) = [];                
-                    params.numCPE = params.numCPE - numel(idxs_new);
+                    params.CPE_locations(new_CPE_idxs,:) = [];                
+                    params.numCPE = params.numCPE - numel(new_CPE_idxs);
                 end
                 if ((params.Band > 0) && (params.numCPE>0))
                     K_FWA = params.numCPE;
                     K = params.numCPE + params.numUE; 
-                    CPE_idxs = 1:1:numCPE;
+                    CPE_idxs = 1:1:numCPE_all;
                     CPE_idxs(CPE_old_idxs) = [];
-                    CPE_idxs(idxs_new) = [];
+                    CPE_idxs(new_CPE_idxs) = [];
                     params.BETA = db2pow(gainOverNoisedB(:,CPE_idxs));   
                     if params.SC
                         params.D = D_small(:,CPE_idxs);
@@ -313,7 +309,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 end
             end
             params.CPE_locations = CPE_locations;
-            params.numCPE = numCPE;
+            params.numCPE = numCPE_all;
             params.R_gNB = R_gNB(:,:,:,1:numCPE_all);
             params.R_cpe = R_cpe;
             params.R_ue = []; 
