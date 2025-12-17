@@ -11,7 +11,7 @@ if (isempty(aID))
 end
 if(isempty(aID))
     warning('aID is empty. Replacing it with 0010.')
-    aID = '0022';
+    aID = '0099';
 end
 % for aID = 1:99
 %RNG seed.
@@ -76,7 +76,7 @@ params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 0:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
+lambda_UE = 1000; %0:250:1000; %200:10:250; %150; %100:50:200; %[30:20:90, 100]; %100;
 params.Lmax = 3;
 params.preLogFactor = 1;
 params.loss_pc_FWA = 5;
@@ -85,7 +85,7 @@ params.nbrOfRealizations = 100;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 1e6*(10:20:90);
+r_min_arr = 90e6; %1e6*(10:20:90);
 %% Simulation FR1 setup
 %% CPE locations
 RCPE =  params.deployRange*sqrt(rand(numCPE_all,1)); %location of UEs (distance from origin)
@@ -256,12 +256,42 @@ for idxBSDensity = 1:length(lambda_BS)
                 params.CPE_locations = CPE_locations;
                 params.CPE_locations(new_CPE_idxs,:) = [];                
                 params.numCPE = numCPE - numel(new_CPE_idxs);
+                idxs_new = [];
                 if (params.numCPE > 0)
                     K_FWA = params.numCPE;
                     K = params.numCPE + params.numUE; 
                     CPE_old_idxs = new_CPE_idxs;
                     CPE_idxs = 1:1:numCPE;
                     CPE_idxs(CPE_old_idxs) = [];
+                    params.BETA = db2pow(gainOverNoisedB(:,CPE_idxs));   
+                    if params.SC
+                        params.D = D_small(:,CPE_idxs);
+                    else
+                        params.D = D(:,CPE_idxs);
+                    end
+                    params.R_gNB = R_gNB(:,:,:,CPE_idxs);
+                    params.R_cpe = R_cpe(:,:,:,CPE_idxs);
+                    params.R_ue = []; 
+                    nbrOfRealizations = params.nbrOfRealizations;
+                    rate_dl = zeros(K,nbrOfRealizations);
+                    for n = 1:nbrOfRealizations
+                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA] = computePhysicalChannels_sub6_MIMO(params);
+                        rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
+                    end
+                    mean_rate_dl_FWA = mean(rate_dl,2);
+                    [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
+                    idxs_new = find(FWA_util>0);
+                    K_FWA_max = K_FWA_max + numel(idxs_new);
+                    params.Band = max(params.Band - params.r_min_FWA/(min(mean_rate_dl_FWA)./params.Band),0);                    
+                    params.CPE_locations(idxs_new,:) = [];                
+                    params.numCPE = params.numCPE - numel(idxs_new);
+                end
+                if ((params.Band > 0) && (params.numCPE>0))
+                    K_FWA = params.numCPE;
+                    K = params.numCPE + params.numUE; 
+                    CPE_idxs = 1:1:numCPE;
+                    CPE_idxs(CPE_old_idxs) = [];
+                    CPE_idxs(idxs_new) = [];
                     params.BETA = db2pow(gainOverNoisedB(:,CPE_idxs));   
                     if params.SC
                         params.D = D_small(:,CPE_idxs);

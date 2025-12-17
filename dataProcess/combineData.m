@@ -1,8 +1,8 @@
 %Taken from 
 % https://in.mathworks.com/matlabcentral/answers/
 %   538119-how-to-import-to-matlab-many-text-files-as-table-type
-% projectdir = '/Users/sdatta/Desktop/FWA_data/fc_c_band/FWA_cell_results';
-projectdir = '/Users/sdatta/FWA-with-CF/resultData/FWA_cell_best_results';
+projectdir = '/Users/sdatta/Desktop/FWA_data/FWA_cell_best_results';
+% projectdir = '/Users/sdatta/FWA-with-CF/resultData/FWA_cell_best_results';
 dinfo = dir(fullfile(projectdir, '*.csv'));   %use appropriate extension
 filenames = fullfile({dinfo.folder}, {dinfo.name});
 nfiles = length(filenames);
@@ -42,5 +42,5 @@ end
 
 summaryTable  = groupsummary(combinedTable,changingVars,{'mean','std','median'});
 
-writetable(summaryTable,'./K_comp_fwa_cell_mc_50CPE_5lBS_varyUEdensity_c_band_64ntx_best.txt')
-writetable(summaryTable,'./K_comp_fwa_cell_mc_50CPE_5lBS_varyUEdensity_c_band_64ntx_best.csv')
+writetable(summaryTable,'./K_comp_fwa_cell_mc_50CPE_5lBS_varyUEdensity_c_band_64ntx_best_slurm.txt')
+writetable(summaryTable,'./K_comp_fwa_cell_mc_50CPE_5lBS_varyUEdensity_c_band_64ntx_best_slurm.csv')
