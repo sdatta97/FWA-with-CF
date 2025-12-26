@@ -17,4 +17,4 @@ module load matlab/2025b
 
 echo "$SLURM_ARRAY_TASK_ID"
 
-matlab -batch "SimulationMain, exit"
+matlab -batch "SimulationMain_ul, exit"
