@@ -293,7 +293,7 @@ for idxBSDensity = 1:length(lambda_BS)
         
             %Taking care of folder directory creation etc
             dataFolder = 'resultData';
-            rateFolder = strcat(dataFolder,'/FWA_cell_best_results');
+            rateFolder = strcat(dataFolder,'/FWA_cell_ul_results');
             if not(isfolder(dataFolder))
                 mkdir(dataFolder)
             end
