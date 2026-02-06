@@ -13,7 +13,7 @@ phy_channel_FWA = zeros(M,K_FWA,Ntx,N_FWA);
 phy_channel_ue = zeros(M,K-K_FWA,Ntx,N_cell);
 for m = 1:M
     for k = 1:K_FWA
-        phy_channel_FWA (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k))*(randn(Ntx,N_FWA) + 1i*randn(Ntx,N_FWA))*sqrtm(R_cpe(:,:,m,k));        
+        phy_channel_FWA (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k))*(randn(Ntx,N_FWA) + 1i*randn(Ntx,N_FWA))*sqrtm(R_cpe(:,:,m,k));     
     end
     for k = 1:K-K_FWA
         phy_channel_ue (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k+K_FWA))*(randn(Ntx,N_cell) + 1i*randn(Ntx,N_cell))*sqrtm(R_ue(:,:,m,k));
