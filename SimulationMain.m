@@ -77,7 +77,7 @@ params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 200:200:1000;
+lambda_UE = 200:200:400;
 params.Lmax = 3;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
@@ -87,7 +87,7 @@ params.nbrOfRealizations = 10;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 1e6*(25:25:300);
+r_min_arr = 1e6*(25:25:50);
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations
@@ -107,7 +107,7 @@ for idxBSDensity = 1:length(lambda_BS)
         RUE = params.deployRange*sqrt(rand(M*numUE,1)); %location of UEs (distance from origin)
         angleUE = 2*pi*rand(M*numUE,1);%location of UEs (angle from x-axis)
         params.UE_locations = [(params.locationsBS(1,:) + [RUE(1:numUE).*cos(angleUE(1:numUE)), RUE(1:numUE).*sin(angleUE(1:numUE))]); (params.locationsBS(2,:) + [RUE(1+numUE:end).*cos(angleUE(1+numUE:end)), RUE(1+numUE:end).*sin(angleUE(1+numUE:end))])];
-        params.numCPE = numCPE_all;
+        params.numCPE = M*numCPE_all;
         params.CPE_locations = CPE_locations;
         params.Band = Band; %Communication bandwidth
         [gainOverNoisedB,R_gNB,R_cpe,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,str2double(aID));
@@ -125,8 +125,8 @@ for idxBSDensity = 1:length(lambda_BS)
         Band = params.Band; %Communication bandwidth
         params.numCPE = 0;
         params.CPE_locations = [];
-        K_FWA = M*params.numCPE;
-        K = M*(params.numCPE + params.numUE); 
+        K_FWA = params.numCPE;
+        K = params.numCPE + M*params.numUE; 
         params.BETA = db2pow(gainOverNoisedB(:,1+M*numCPE_all:end));   
         if params.SC
             params.D = D_small(:,1+M*numCPE_all:end);

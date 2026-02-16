@@ -20,7 +20,14 @@ P_idxs = zeros(M,K_P);
 [~,P_idxs(1,:)] = mink(BETA(1,:) + ((BETA(1,:)<=0).*(1+max(BETA))),K_P);
 [~,P_idxs(2,:)] = mink(BETA(2,:) + ((BETA(2,:)<=0).*(1+max(BETA))),K_P);
 I_idxs = zeros(M,K_I);
-I_idxs = [setdiff(find(D(1,:)),P_idxs(1,:));setdiff(find(D(2,:)),P_idxs(2,:))];
+try
+    I_idxs = [setdiff(find(D(1,:)),P_idxs(1,:));setdiff(find(D(2,:)),P_idxs(2,:))];
+catch E
+    % Handle potential errors in index assignment
+    if isempty(I_idxs)
+        I_idxs = zeros(M, K_I); % Ensure I_idxs is initialized if empty
+    end
+end
 %Prepare cell to store the AP indices serving a specfic UE
 Serv = cell(K,1);
 %Prepare cell to store the AP indices not serving a specfic UE

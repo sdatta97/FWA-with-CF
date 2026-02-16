@@ -50,8 +50,8 @@ function [gainOverNoisedB,R_gNB,R_cpe,R_ue,pilotIndex,D,D_small,APpositions,UEpo
 %use this code for research that results in publications, please cite our
 %monograph as described above.
 L = size(params.locationsBS,1);
-K_FWA = L*params.numCPE;
-K = L*params.numUE+L*params.numCPE;
+K_FWA = params.numCPE;
+K = L*params.numUE+params.numCPE;
 Lmax = 1; %params.Lmax;
 N = params.num_antennas_per_gNB;
 N_UE_FWA = params.N_UE_FWA;
