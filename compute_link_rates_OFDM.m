@@ -1,7 +1,7 @@
 function rate_dl = compute_link_rates_OFDM(params,channel_dl)
 M = params.numGNB;
-K_FWA = M*params.numCPE;
-K = M*(params.numUE + params.numCPE);
+K_FWA = params.numCPE;
+K = M*params.numUE + params.numCPE;
 BW = params.Band;
 alpha = 0.5;
 I_band = alpha*BW;
@@ -17,17 +17,9 @@ D = params.D;
 BETA = params.BETA;
 BETA = BETA.*D;
 P_idxs = zeros(M,K_P);
-[~,P_idxs(1,:)] = mink(BETA(1,:) + ((BETA(1,:)<=0).*(1+max(BETA))),K_P);
-[~,P_idxs(2,:)] = mink(BETA(2,:) + ((BETA(2,:)<=0).*(1+max(BETA))),K_P);
-I_idxs = zeros(M,K_I);
-try
-    I_idxs = [setdiff(find(D(1,:)),P_idxs(1,:));setdiff(find(D(2,:)),P_idxs(2,:))];
-catch E
-    % Handle potential errors in index assignment
-    if isempty(I_idxs)
-        I_idxs = zeros(M, K_I); % Ensure I_idxs is initialized if empty
-    end
-end
+[~,P_idxs(1,:)] = mink(BETA(1,:) + ((BETA(1,:)<=0).*(1+max(BETA(1,:)))),K_P);
+[~,P_idxs(2,:)] = mink(BETA(2,:) + ((BETA(2,:)<=0).*(1+max(BETA(2,:)))),K_P);
+I_idxs = [setdiff(find(D(1,:)),P_idxs(1,:)),setdiff(find(D(2,:)),P_idxs(2,:))];
 %Prepare cell to store the AP indices serving a specfic UE
 Serv = cell(K,1);
 %Prepare cell to store the AP indices not serving a specfic UE
