@@ -77,7 +77,7 @@ params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 200:200:400;
+lambda_UE = 200:200:1000;
 params.Lmax = 3;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
@@ -87,7 +87,7 @@ params.nbrOfRealizations = 10;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 1e6*(25:25:50);
+r_min_arr = 1e6*(25:25:300);
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations
