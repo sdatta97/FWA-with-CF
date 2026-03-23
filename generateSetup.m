@@ -1,4 +1,4 @@
-function [gainOverNoisedB,R_gNB,R_cpe,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,seed)
+function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances,distancesUEs] = generateSetup(params,seed)
 %This function generates realizations of the simulation setup described in
 %Section 5.3.
 %
@@ -96,17 +96,18 @@ antennaSpacing = 1/2; %Half wavelength distance
 
 %Prepare to save results
 gainOverNoisedB = zeros(L,K);
+gainOverNoisedB_ue = zeros(K,K);
 R_gNB = zeros(N,N,L,K);
 R_cpe = zeros(N_UE_FWA,N_UE_FWA,L,K_FWA);
+R_interue = zeros(N_UE_FWA,N_UE_FWA,K,K);
 R_ue = zeros(N_UE_cell,N_UE_cell,L,K-K_FWA);
 distances = zeros(L,K);
+distancesUEs = zeros(K,K);
 pilotIndex = zeros(K,1);
 % D = zeros(L,K,nbrOfSetups);
 % D = [ones(L,K_FWA),zeros(L,K-K_FWA)];
 D = ones(L,K);
 D_small = zeros(L,K);
-
-masterAPs = zeros(K,1); %the indices of master AP of each UE k 
     
 %Random AP locations with uniform distribution
 locationsBS = params.locationsBS;
@@ -127,6 +128,8 @@ APpositionsWrapped = repmat(APpositions,[1 length(wrapLocations)]) + repmat(wrap
 shadowCorrMatrix = sigma_sf^2*ones(K,K);
 shadowAPrealizations = zeros(K,L);    
 
+shadowCorrMatrix_ue = sigma_sf^2*ones(K,K);
+shadowCPErealizations_ue = zeros(K,K);  
 %Add UEs
 for k = 1:K
     
@@ -142,7 +145,7 @@ for k = 1:K
         distanceVertical = params.ht_bs - params.hr;
     end
     distances(:,k) = sqrt(distanceVertical^2+distanceAPstoUE.^2);
-    
+    distancesUEs(:,k) = abs(UEpositions - UEposition);
     %If this is not the first UE
     if k-1>0
         
@@ -178,8 +181,6 @@ for k = 1:K
     %Compute the channel gain divided by noise power
     gainOverNoisedB(:,k) = constantTerm - alpha*log10(distances(:,k)) + shadowing' - noiseVariancedBm;
     
-    
-    
     %Update shadowing correlation matrix and store realizations
     shadowCorrMatrix(1:k-1,k) = newcolumn;
     shadowCorrMatrix(k,1:k-1) = newcolumn';
@@ -187,44 +188,54 @@ for k = 1:K
     
     %Store the UE position
     UEpositions(k) = UEposition;
-    
-    
-    %Determine the master AP for UE k by looking for AP with best
-    %channel condition
-%         [~,master] = max(gainOverNoisedB(:,k));
-%         D(master,k) = 1;
-%         masterAPs(k) = master;
-%         
-%         %Assign orthogonal pilots to the first tau_p UEs according to
-%         %Algorithm 4.1
-%         if k <= tau_p
-%             
-%             pilotIndex(k) = k;
-%             
-%         else %Assign pilot for remaining UEs
-%             
-%             %Compute received power to the master AP from each pilot
-%             %according to Algorithm 4.1
-%             pilotinterference = zeros(tau_p,1);
-%             
-%             for t = 1:tau_p
-%                 
-%                 pilotinterference(t) = sum(db2pow(gainOverNoisedB(master,pilotIndex(1:k-1)==t)));
-%                 
-%             end
-%             
-%             %Find the pilot with the least receiver power according to
-%             %Algorithm 4.1
-%             [~,bestpilot] = min(pilotinterference);
-%             pilotIndex(k) = bestpilot;
-%             
-%         end
-    
-    
+    % If this is not the first CPE
+    if k-1>0
+        %Compute conditional mean and standard deviation necessary to
+        %obtain the new shadow fading realizations, when the previous
+        %UEs' shadow fading realization have already been generated.
+        %This computation is based on Theorem 10.2 in "Fundamentals of
+        %Statistical Signal Processing: Estimation Theory" by S. Kay
+        newcolumn_ue = (sigma_sf^2).*2.^(-abs(UEposition - UEpositions(1:k-1))/decorr);
+        term1 = newcolumn_ue'/shadowCorrMatrix_ue(1:k-1,1:k-1);
+        meanvalues_ue = term1*shadowCPErealizations_ue(1:k-1,:);
+        stdvalue_ue = sqrt(sigma_sf^2 - term1*newcolumn_ue);
+
+    else %If this is the first UE
+
+        %Add the UE and begin to store shadow fading correlation values
+        meanvalues_ue = 0;
+        stdvalue_ue = sigma_sf;
+        newcolumn_ue = [];
+
+    end
+    shadowing_ue = meanvalues_ue + stdvalue_ue*randn(1,K);
+    % shadowing_ue = sigma_sf*randn(1,K);
+    %Compute the channel gain divided by noise power
+    gainOverNoisedB_ue(:,k) = constantTerm - alpha*log10(distancesUEs(:,k)) + shadowing_ue' - noiseVariancedBm;
+
+    % %Update shadowing correlation matrix and store realizations
+    shadowCorrMatrix_ue(1:k-1,k) = newcolumn_ue;
+    shadowCorrMatrix_ue(k,1:k-1) = newcolumn_ue';
+    shadowCPErealizations_ue(k,:) = shadowing_ue;  
+
+    %Go through all CPEs
+    for l = 1:K_FWA
+        
+        %Compute nominal angle between UE k and AP l
+        angletoUE_varphi = angle(UEpositions(k)-UEpositions(l)); %azimuth angle
+        angletoUE_theta = 0;  %elevation angle
+        %Generate spatial correlation matrix using the local
+        %scattering model in (2.18) and Gaussian angular distribution
+        %by scaling the normalized matrices with the channel gain
+        if nargin>12
+            R_interue(:,:,l,k) = db2pow(gainOverNoisedB_ue(l,k))*functionRlocalscattering_mod(N_UE_FWA,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
+        else
+            R_interue(:,:,l,k) = db2pow(gainOverNoisedB_ue(l,k))*eye(N_UE_FWA);
+        end
+    end
     
     %Go through all APs
-    for l = 1:L
-        
+    for l = 1:L       
         %Compute nominal angle between UE k and AP l
         angletoUE_varphi = angle(UEpositions(k)-APpositionsWrapped(l,whichpos(l))); %azimuth angle
         angletoUE_theta = asin(distanceVertical/distances(l,k));  %elevation angle
@@ -247,7 +258,6 @@ for k = 1:K
             end
         end
     end
-    
 end
 
 
@@ -265,9 +275,8 @@ end
 %         
 %     end
 
-gainOverNoise = db2pow(gainOverNoisedB);
 for k = 1:K
-    [gains, idxs] = sort(gainOverNoise(:,k), 'descend');
+    [~, idxs] = sort(gainOverNoisedB(:,k), 'descend');
     idxs_not_chosen = idxs((Lmax+1):end);
     D(idxs_not_chosen,k) = 0;
 end

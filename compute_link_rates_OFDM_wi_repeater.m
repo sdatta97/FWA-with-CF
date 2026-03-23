@@ -1,4 +1,4 @@
-function rate_dl = compute_link_rates_OFDM(params,channel_dl)
+function rate_dl = compute_link_rates_OFDM_wi_repeater(params, channel_dl, channel_dl_FWA, channel_interFWA)
 M = params.numGNB;
 K_FWA = params.numCPE;
 K = M*params.numUE + params.numCPE;
@@ -12,9 +12,12 @@ K_I = K-K_FWA-M*K_P;
 TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
 N_UE = size(channel_dl,4);
+N_CPE_FWA = size(channel_dl_FWA,4);
 p_d = params.rho_tot; % 1*K;
 D = params.D;
 BETA = params.BETA;
+BETA_interUE = params.BETA_interUE;
+rep_gain = params.repeat_gain;
 BETA = BETA.*D;
 P_idxs = zeros(M,K_P);
 [~,P_idxs(1,:)] = mink(BETA(1,:) + (BETA(1,:)<=0).*(1+max(BETA(1,:))),K_P);
@@ -31,6 +34,19 @@ for k = 1:K
     
     Serv{k} = servingBSs;
     NoServ{k} = NoservingBSs;
+end
+K_rep = params.num_repeater_per_cpe;
+%Prepare cell to store the CPE indices serving a specfic UE
+Rep = cell(K-K_FWA,1);
+%Prepare cell to store the CPE indices not serving a specfic UE
+NoRep = cell(K-K_FWA,1);
+%Construc the above array and cells
+for k = 1:K-K_FWA
+    v = BETA(Serv{k+K_FWA},1:K_FWA)'.*BETA_interUE(1:K_FWA,k+K_FWA);
+    [~,servingCPEs] =  maxk(v,K_rep);
+    NoservingCPEs = setdiff(params.set_repeat,servingCPEs);
+    Rep{k} = servingCPEs;
+    NoRep{k} = NoservingCPEs; 
 end
 
 % %% initialization of c
@@ -88,19 +104,39 @@ noise_dl = abs(sqrt(0.5)*(randn(K-K_FWA,N_UE) + 1j*randn(K-K_FWA,N_UE))).^2;
 rate_dl = zeros(K-K_FWA,1);
 for k = 1:K-K_FWA
     for n = 1:N_UE
-        DS_dl(k,n) = p_d*abs(reshape(channel_dl(Serv{k},k,:,n),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,n),N_BS,1)./norm(channel_dl(Serv{k},k,:,n),'fro'))^2;
+        eff_channel = reshape(channel_dl(Serv{k},k,:,n),N_BS,1);
+        for kk = 1:numel(Rep{k})
+            rep_idx = Rep{k}(kk);
+            eff_channel = eff_channel + reshape(channel_dl_FWA(Serv{k},rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);
+        end
+        DS_dl(k,n) = p_d*abs(eff_channel'*eff_channel./norm(eff_channel))^2;
         for nn = 1:N_UE
             if (nn~=n)
-                if (reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)<reshape(channel_dl(Serv{k},k,:,n),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,n),N_BS,1))
-                    MSI_dl(k,n) = p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)./norm(channel_dl(Serv{k},k,:,nn),'fro'))^2;
+                nn_eff_channel = reshape(channel_dl(Serv{k},k,:,nn),N_BS,1);
+                 for kk = 1:numel(Rep{k})
+                    rep_idx = Rep{k}(kk);
+                    nn_eff_channel = nn_eff_channel + reshape(channel_dl_FWA(Serv{k},rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,k+K_FWA,:,nn),[N_CPE_FWA,1]);
+                end
+                if (norm(nn_eff_channel,'fro') < norm(eff_channel,'fro'))
+                    MSI_dl(k,n) = p_d*abs(eff_channel'*nn_eff_channel./norm(nn_eff_channel))^2;
                 end
                 if ismember(k,I_idxs)
-                    MCI_dl(k,n) = p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*reshape(channel_dl(NoServ{k},k,:,nn),N_BS,1)./norm(channel_dl(NoServ{k},k,:,nn),'fro'))^2;
+                    mci_eff_channel = reshape(channel_dl(NoServ{k},k,:,nn),N_BS,1);
+                    for kk = 1:numel(Rep{k})
+                        rep_idx = Rep{k}(kk);
+                        mci_eff_channel = mci_eff_channel + reshape(channel_dl_FWA(NoServ{k},rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,k+K_FWA,:,nn),[N_CPE_FWA,1]);
+                    end
+                    MCI_dl(k,n) = p_d*abs(eff_channel'*mci_eff_channel./norm(mci_eff_channel))^2;
                 end
             end
         end
-        if ismember(k,I_idxs)       
-            MCI_dl(k,n) = MCI_dl(k,n) + p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*reshape(channel_dl(NoServ{k},k,:,n),N_BS,1)./norm(channel_dl(NoServ{k},k,:,n),'fro'))^2;
+        if ismember(k,I_idxs)   
+            mci_eff_channel = reshape(channel_dl(NoServ{k},k,:,n),N_BS,1);
+            for kk = 1:numel(Rep{k})
+                rep_idx = Rep{k}(kk);
+                mci_eff_channel = mci_eff_channel + reshape(channel_dl_FWA(NoServ{k},rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);
+            end
+            MCI_dl(k,n) = MCI_dl(k,n) + p_d*abs(eff_channel'*mci_eff_channel./norm(mci_eff_channel))^2;
         end
         if ismember(k,I_idxs)
             rate_dl(k) = rate_dl(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));

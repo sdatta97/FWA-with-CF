@@ -135,6 +135,7 @@ for idxBSDensity = 1:length(lambda_BS)
         end
         params.R_gNB = R_gNB(:,:,:,1+M*numCPE_all:end);
         params.R_cpe = [];
+        params.R_intercpe = [];
         params.R_ue = R_ue; 
         nbrOfRealizations = params.nbrOfRealizations;
         rate_dl = zeros(K,nbrOfRealizations);

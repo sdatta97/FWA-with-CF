@@ -1,4 +1,4 @@
-function [phy_channel_ue, phy_channel_ue_est, phy_channel_FWA, phy_channel_FWA_est] = computePhysicalChannels_sub6_MIMO(params)
+function [phy_channel_ue, phy_channel_ue_est, phy_channel_FWA, phy_channel_FWA_est, phy_channel_interFWA, phy_channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params)
 M = params.numGNB;
 K = M*params.numUE+params.numCPE;
 K_FWA = params.numCPE;
@@ -8,9 +8,11 @@ N_cell = params.N_UE_cell;
 BETA = params.BETA;
 R_gNB = params.R_gNB;
 R_cpe = params.R_cpe;
+R_interue = params.R_interue;
 R_ue = params.R_ue;
 phy_channel_FWA = zeros(M,K_FWA,Ntx,N_FWA);
 phy_channel_ue = zeros(M,K-K_FWA,Ntx,N_cell);
+phy_channel_interFWA = zeros(K_FWA,K,N_FWA,N_FWA);
 for m = 1:M
     for k = 1:K_FWA
         phy_channel_FWA (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k))*(randn(Ntx,N_FWA) + 1i*randn(Ntx,N_FWA))*sqrtm(R_cpe(:,:,m,k));     
@@ -26,8 +28,16 @@ if params.MOBILE
         end 
     end
 end
+for q = 1:K_FWA
+    for k = 1:K
+        if (q~=k)
+            phy_channel_interFWA(q,k,:,:) = sqrt(0.5)*sqrtm(R_interue(:,:,q,k))*(randn(N_FWA,N_FWA) + 1i*randn(N_FWA,N_FWA));
+        end
+    end
+end
 phy_channel_FWA_est = phy_channel_FWA;
 phy_channel_ue_est = phy_channel_ue;
+phy_channel_interFWA_est = phy_channel_interFWA;
 % phy_channel_sub6_est = zeros(M,Kd,Ntx);
 % PHI1    = orth(rand(tau));   % generate an orthonormal matrix of dimension tau_p
 % PHI     = zeros(size(PHI1));

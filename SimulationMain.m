@@ -68,6 +68,10 @@ params.num_antennas_per_gNB = 64;
 params.num_antennas_per_sc = 16;
 params.rho_tot = 10^(0.1*75)*(Band/1e8); 
 params.rho_tot_sc = 10^(0.1*55);
+params.repeat_gain = 1; %10^(0.1*(6.5+20*log10(params.fc/1e6)));
+params.set_repeat = [];
+params.num_repeater_per_cpe = 2;
+params.REPEAT = 0;
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -110,8 +114,8 @@ for idxBSDensity = 1:length(lambda_BS)
         params.numCPE = M*numCPE_all;
         params.CPE_locations = CPE_locations;
         params.Band = Band; %Communication bandwidth
-        [gainOverNoisedB,R_gNB,R_cpe,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,str2double(aID));
-        % [gainOverNoisedB,R_gNB,R_cpe,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,aID);
+        [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,str2double(aID));
+        % [gainOverNoisedB,gainOverNoisedB_cpe,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,aID);
         ASD_VALUE = params.ASD_VALUE;
         ASD_CORR = params.ASD_CORR;
         Kt_Kr_vsUE = params.Kt_Kr_vsUE;
@@ -123,25 +127,47 @@ for idxBSDensity = 1:length(lambda_BS)
         noiseFigure = params.noiseFigure;
         sigma_sf = params.sigma_sf;
         Band = params.Band; %Communication bandwidth
-        params.numCPE = 0;
-        params.CPE_locations = [];
         K_FWA = params.numCPE;
         K = params.numCPE + M*params.numUE; 
-        params.BETA = db2pow(gainOverNoisedB(:,1+M*numCPE_all:end));   
-        if params.SC
-            params.D = D_small(:,1+M*numCPE_all:end);
+        params.BETA_interUE = db2pow(gainOverNoisedB_ue);  
+        if params.REPEAT
+            params.BETA = db2pow(gainOverNoisedB);   
+            if params.SC
+                params.D = D_small;
+            else
+                params.D = D;
+            end
+            params.R_gNB = R_gNB;
+            params.R_cpe = R_cpe;
+            params.R_interue = R_interue;
+            params.R_ue = R_ue; 
+            nbrOfRealizations = params.nbrOfRealizations;
+            rate_dl = zeros(K-K_FWA,nbrOfRealizations);
+            for n = 1:nbrOfRealizations
+                [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+                % rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);
+                rate_dl(:,n) = compute_link_rates_OFDM_wi_repeater(params, channel_dl, channel_dl_FWA, channel_interFWA);         
+            end
         else
-            params.D = D(:,1+M*numCPE_all:end);
-        end
-        params.R_gNB = R_gNB(:,:,:,1+M*numCPE_all:end);
-        params.R_cpe = [];
-        params.R_ue = R_ue; 
-        nbrOfRealizations = params.nbrOfRealizations;
-        rate_dl = zeros(K,nbrOfRealizations);
-        for n = 1:nbrOfRealizations
-            [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA] = computePhysicalChannels_sub6_MIMO(params);
-            % rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
-            rate_dl(:,n) = compute_link_rates_OFDM(params, channel_dl);                                              
+            params.numCPE = 0;
+            params.CPE_locations = [];
+            params.BETA = db2pow(gainOverNoisedB(:,1+M*numCPE_all:end));   
+            if params.SC
+                params.D = D_small(:,1+M*numCPE_all:end);
+            else
+                params.D = D(:,1+M*numCPE_all:end);
+            end
+            params.R_gNB = R_gNB(:,:,:,1+M*numCPE_all:end);
+            params.R_cpe = [];
+            params.R_interue = [];
+            params.R_ue = R_ue; 
+            nbrOfRealizations = params.nbrOfRealizations;
+            rate_dl = zeros(K-K_FWA,nbrOfRealizations);
+            for n = 1:nbrOfRealizations
+                [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+                % rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);
+                rate_dl(:,n) = compute_link_rates_OFDM(params, channel_dl);         
+            end
         end
         mean_rate_dl_cell = mean(rate_dl,2);
         if (quantile(mean_rate_dl_cell,params.loss_pc_cell)>=params.r_min_cell)
@@ -163,61 +189,70 @@ for idxBSDensity = 1:length(lambda_BS)
         else
             params.D = D(:,1:M*numCPE_all);
         end
+        CPE_idxs = 1:M*numCPE_all;
         params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
         params.R_cpe = R_cpe;
+        params.R_interue = R_interue;
         params.R_ue = []; 
+        params.set_repeat = [];
         rate_dl = zeros(K,nbrOfRealizations);
         for n = 1:nbrOfRealizations
-            [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA] = computePhysicalChannels_sub6_MIMO(params);
-            rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
+            [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+            rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);                                              
         end
         mean_rate_dl_FWA = mean(rate_dl,2);
+        save_old_rate = rate_dl;
         save_old_mean_FWA = mean_rate_dl_FWA;
         Band_FWA = params.Band;
         for idxrmin = 1:length(r_min_arr)
-            sum_FWA_rate = 0;
             params.r_min_FWA = r_min_arr(idxrmin);
             K_FWA_max = 0;
             params.Band = Band_FWA;
             if (params.Band > 0)
                 while any(mean_rate_dl_FWA > params.r_max_FWA)
                     CPE_idxs = find(mean_rate_dl_FWA > params.r_max_FWA);
-                    K_FWA_max = K_FWA_max + numel(CPE_idxs);
-                    params.numCPE = params.numCPE - numel(CPE_idxs);
                     params.Band = params.Band*(1-(params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA))));
-                    sum_FWA_rate = sum_FWA_rate + sum(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA))*params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA));
-                    params.R_gNB(:,:,:,CPE_idxs) = [];
-                    params.R_cpe(:,:,:,CPE_idxs) = [];
-                    params.D(:,CPE_idxs) = [];
-                    rate_dl = zeros(K-K_FWA_max,nbrOfRealizations);
+                    rate_dl(CPE_idxs,:) = rate_dl(CPE_idxs,:)*params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA));
+                    mean_rate_dl_FWA(CPE_idxs) = mean(rate_dl(CPE_idxs,:),2);
+                    params.set_repeat = [params.set_repeat; CPE_idxs];
+                    not_set_repeat = setdiff(1:M*numCPE_all,params.set_repeat);
                     for n = 1:nbrOfRealizations
-                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA] = computePhysicalChannels_sub6_MIMO(params);
-                        rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
+                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+                        rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);                                              
                     end
-                    mean_rate_dl_FWA = mean(rate_dl,2);
+                    mean_rate_dl_FWA(not_set_repeat) = mean(rate_dl(not_set_repeat,:),2);
                 end
                 [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
-                CPE_idxs = find(FWA_util == 0);
-                K_FWA_max = K_FWA_max + sum(FWA_util>0);
-                rate_dl = zeros(sum(FWA_util > 0),nbrOfRealizations);
-                params.numCPE = params.numCPE - numel(CPE_idxs);
-                params.R_gNB(:,:,:,CPE_idxs) = [];
-                params.R_cpe(:,:,:,CPE_idxs) = [];
-                params.D(:,CPE_idxs) = [];
-                for n = 1:nbrOfRealizations
-                    [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA] = computePhysicalChannels_sub6_MIMO(params);
-                    rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                          
+                K_FWA_max = sum(FWA_util>0);
+                REPEAT = params.REPEAT && (K_FWA_max < K_FWA);  
+                if REPEAT
+                    CPE_idxs = setdiff(find(FWA_util>0),params.set_repeat);
+                    params.set_repeat = find(FWA_util>0);
+                    not_set_repeat = setdiff(1:M*numCPE_all,params.set_repeat);
+                    current_min_rate = min(mean_rate_dl_FWA(CPE_idxs));
+                    rate_dl(union(CPE_idxs,not_set_repeat),:) = rate_dl(union(CPE_idxs,not_set_repeat),:)*params.r_min_FWA/current_min_rate;
+                    mean_rate_dl_FWA(union(CPE_idxs,not_set_repeat)) = mean(rate_dl(union(CPE_idxs,not_set_repeat),:),2);
+                    params.Band = params.Band*(1-(params.r_min_FWA/current_min_rate));
+                    for n = 1:nbrOfRealizations
+                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);                        
+                        rate_dl(:,n) = compute_link_rates_MIMO_mmse_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est, Band_FWA);                                          
+                    end
+                    mean_rate_dl_FWA(not_set_repeat) = mean_rate_dl_FWA(not_set_repeat) + mean(rate_dl(not_set_repeat,:),2);
+                    [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
+                    K_FWA_max = sum(FWA_util>0);
                 end
-                mean_rate_dl_FWA = mean(rate_dl,2);
-                sum_FWA_rate = sum_FWA_rate + sum(mean_rate_dl_FWA);
             end
+            sum_FWA_rate = sum(mean_rate_dl_FWA);
             params.CPE_locations = CPE_locations;
             params.numCPE = M*numCPE_all;
             params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
             params.R_cpe = R_cpe;
+            params.R_interue = R_interue;
             params.R_ue = []; 
             params.D = D(:,1:M*numCPE_all);
+            params.set_repeat = [];
             mean_rate_dl_FWA = save_old_mean_FWA;
+            rate_dl = save_old_rate;
             %% Recording the Results
         
             %Taking care of folder directory creation etc

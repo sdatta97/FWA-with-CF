@@ -1,5 +1,5 @@
 % function rate_dl = compute_link_rates_MIMO_mmse(params,channel_dl, channel_dl_sc, channel_est_dl, channel_est_dl_sc, channel_dl_FWA, channel_dl_FWA_sc, channel_est_dl_FWA, channel_est_dl_FWA_sc)
-function rate_dl = compute_link_rates_MIMO_mmse(params,channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est)
+function rate_dl = compute_link_rates_MIMO_mmse_wi_repeater(params,channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est, Band_FWA)
 M = params.numGNB;
 % S = params.numSC;
 K_FWA = params.numCPE;
@@ -14,8 +14,9 @@ p_d = params.rho_tot; % 1*K;
 % p_d_sc = params.rho_tot_sc; % 1*K;
 D = params.D;
 BETA = params.BETA;
+BETA_interCPE = params.BETA_interCPE;
+rep_gain = params.repeat_gain;
 BETA = BETA.*D;
-set_repeat = params.set_repeat;
 % D_sc = params.D_sc;
 % BETA_sc = params.BETA_sc;
 
@@ -40,6 +41,27 @@ for k = 1:K
     % NoServ_sc{k} = NoservingSCs;  
 end
 
+K_rep = params.num_repeater_per_cpe;
+%Prepare cell to store the AP indices serving a specficic UE
+Rep = cell(K_FWA,1);
+%Prepare cell to store the AP indices not serving a specficic UE
+NoRep = cell(K_FWA,1);
+%Prepare cell to store the AP indices serving a specficic UE
+% Serv_sc = cell(K,1);
+%Prepare cell to store the AP indices not serving a specficic UE
+% NoServ_sc = cell(K,1);
+%Construc the above array and cells
+for k = 1:K_FWA
+    if ~ismember(k,params.set_repeat)
+        v = BETA(Serv{k},1:K_FWA)'.*BETA_interCPE(1:K_FWA,k);
+        v(setdiff(1:K_FWA,params.set_repeat)) = -Inf;
+        [~,servingCPEs] =  maxk(v,K_rep);
+        NoservingCPEs = setdiff(params.set_repeat,servingCPEs); 
+        
+        Rep{k} = servingCPEs;
+        NoRep{k} = NoservingCPEs; 
+    end
+end
 %% initialization of c
 D_FWA_FWA = zeros(K_FWA,K_FWA,N_CPE_FWA,N_CPE_FWA);
 D_FWA_Cell = zeros(K_FWA,K-K_FWA,N_CPE_FWA,N_UE);
@@ -53,11 +75,17 @@ scaling_LP_mmse = zeros(M,K);
 % scaling_LP_mmse_sc = zeros(S,K);
 for m = 1:M
     for k = 1:K_FWA
-        if ~ismember(k,set_repeat)
+        if ~ismember(k,params.set_repeat)
             inv_matrix = eye(N_BS);
             for q = 1:K_FWA
-                if ismember(m,Serv{q}) && ~ismember(q,set_repeat)                
-                    inv_matrix = inv_matrix + p_d*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])';
+                if ismember(m,Serv{q}) && ~ismember(q,params.set_repeat) 
+                    eff_channel = reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
+                    for qq = 1:numel(Rep{q})
+                        rep_idx = Rep{q}(qq);
+                        eff_channel = eff_channel + reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,q,:,:),[N_CPE_FWA,N_CPE_FWA]);
+                    end
+                    inv_matrix = inv_matrix + p_d*(eff_channel*eff_channel');
+                    % inv_matrix = inv_matrix + p_d*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])';
                 end
             end
             for q = 1:K-K_FWA
@@ -65,7 +93,12 @@ for m = 1:M
                     inv_matrix = inv_matrix + p_d*reshape(channel_dl(m,q,:,:),[N_BS,N_UE])*reshape(channel_dl(m,q,:,:),[N_BS,N_UE])';
                 end
             end
-            dl_mmse_precoder_FWA(m,k,:,:) = reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA]) + p_d*inv_matrix\(reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA]));
+            eff_channel = reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA]);
+            for kk = 1:numel(Rep{k})
+                rep_idx = Rep{k}(kk);
+                eff_channel = eff_channel + reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,k,:,:),[N_CPE_FWA,N_CPE_FWA]);
+            end
+            dl_mmse_precoder_FWA(m,k,:,:) = reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA]) + p_d*inv_matrix\(eff_channel);
             if ismember(m,Serv{k})
                 scaling_LP_mmse(m,k) = scaling_LP_mmse(m,k) + norm(dl_mmse_precoder_FWA(m,k,:,:),'fro')^2;
             end
@@ -75,8 +108,14 @@ for m = 1:M
         % inv_matrix = noiseVariance*eye(Ntx);
         inv_matrix = eye(N_BS);
         for q = 1:K_FWA
-            if ismember(m,Serv{q}) && ~ismember(q,set_repeat) 
-                inv_matrix = inv_matrix + p_d*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])';
+            if ismember(m,Serv{q}) && ~ismember(q,params.set_repeat)
+                eff_channel = reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
+                for qq = 1:numel(Rep{q})
+                    rep_idx = Rep{q}(qq);
+                    eff_channel = eff_channel + reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,q,:,:),[N_CPE_FWA,N_CPE_FWA]);
+                end
+                inv_matrix = inv_matrix + p_d*(eff_channel*eff_channel');
+                % inv_matrix = inv_matrix + p_d*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])';
             end
         end
         for q = 1:K-K_FWA
@@ -130,7 +169,7 @@ end
 % end
 for m = 1:M
     for k = 1:K_FWA
-        if ismember(m,Serv{k}) && ~ismember(k,set_repeat) 
+        if ismember(m,Serv{k}) && ~ismember(k,params.set_repeat)
             dl_mmse_precoder_FWA(m,k,:,:) = reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])./sqrt(scaling_LP_mmse(m,k));
         end
     end
@@ -158,8 +197,8 @@ for m = 1:M
     for k = 1:K
         if ismember(m,Serv{k})
             if (k<=K_FWA)
-                if ~ismember(k,set_repeat) 
-                    term = term + trace(reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])*reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])');
+                if ~ismember(k,params.set_repeat)     
+                    term = term + trace(reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])*reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])');                    
                 end
             else
                 term = term + trace(reshape(dl_mmse_precoder(m,k-K_FWA,:,:),[N_BS,N_UE])*reshape(dl_mmse_precoder(m,k-K_FWA,:,:),[N_BS,N_UE])');
@@ -168,7 +207,7 @@ for m = 1:M
     end
     if (term > 0)
         setA = 1:K;
-        eta_eq(m,setA(~ismember(setA,set_repeat))) = (1/term)*D(m,setA(~ismember(setA,set_repeat)));
+        eta_eq(m,setA(~ismember(setA,params.set_repeat))) = (1/term)*D(m,setA(~ismember(setA,params.set_repeat)));
     end
 end
 % eta_eq_sc = zeros(S,K);
@@ -188,23 +227,32 @@ end
 %     end
 % end
 for k = 1:K_FWA
-    if ~ismember(k,set_repeat) 
+    if ~ismember(k,params.set_repeat) 
+        eff_channel = reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA]);
+        for qq = 1:numel(Rep{k})
+            rep_idx = Rep{k}(qq);
+            eff_channel = eff_channel + reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,k,:,:),[N_CPE_FWA,N_CPE_FWA]);
+        end
         for q = 1:K_FWA
-            for m = 1:M
-                if ismember(m,Serv{q}) && ~ismember(q,set_repeat) 
-                    D_FWA_FWA(k,q,:,:) = reshape(D_FWA_FWA(k,q,:,:),[N_CPE_FWA,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA])'*reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
+            if ~ismember(q,params.set_repeat) 
+                for m = 1:M
+                    if ismember(m,Serv{q})
+                        % D_FWA_FWA(k,q,:,:) = reshape(D_FWA_FWA(k,q,:,:),[N_CPE_FWA,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA])'*reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
+                        D_FWA_FWA(k,q,:,:) = reshape(D_FWA_FWA(k,q,:,:),[N_CPE_FWA,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*eff_channel'*reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
+                    end
                 end
+                % for s = 1:S
+                %     if ismember(s,Serv_sc{q})
+                %         D_FWA_FWA(k,q,:,:) = reshape(D_FWA_FWA(k,q,:,:),[N_CPE_FWA,N_CPE_FWA]) + sqrt(eta_eq_sc(s,q))*reshape(channel_dl_FWA_sc(s,k,:,:),[N_SC,N_CPE_FWA])'*reshape(dl_mmse_precoder_FWA_sc(s,q,:,:),[N_SC,N_CPE_FWA]);
+                %     end
+                % end
             end
-            % for s = 1:S
-            %     if ismember(s,Serv_sc{q})
-            %         D_FWA_FWA(k,q,:,:) = reshape(D_FWA_FWA(k,q,:,:),[N_CPE_FWA,N_CPE_FWA]) + sqrt(eta_eq_sc(s,q))*reshape(channel_dl_FWA_sc(s,k,:,:),[N_SC,N_CPE_FWA])'*reshape(dl_mmse_precoder_FWA_sc(s,q,:,:),[N_SC,N_CPE_FWA]);
-            %     end
-            % end
         end
         for q = 1:K-K_FWA
             for m = 1:M
                 if ismember(m,Serv{q+K_FWA})
-                    D_FWA_Cell(k,q,:,:) = reshape(D_FWA_Cell(k,q,:,:),[N_CPE_FWA,N_UE]) + sqrt(p_d*eta_eq(m,q+K_FWA))*reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA])'*reshape(dl_mmse_precoder(m,q,:,:),[N_BS,N_UE]);
+                    % D_FWA_Cell(k,q,:,:) = reshape(D_FWA_Cell(k,q,:,:),[N_CPE_FWA,N_UE]) + sqrt(p_d*eta_eq(m,q+K_FWA))*reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA])'*reshape(dl_mmse_precoder(m,q,:,:),[N_BS,N_UE]);
+                    D_FWA_Cell(k,q,:,:) = reshape(D_FWA_Cell(k,q,:,:),[N_CPE_FWA,N_UE]) + sqrt(p_d*eta_eq(m,q+K_FWA))*eff_channel'*reshape(dl_mmse_precoder(m,q,:,:),[N_BS,N_UE]);    
                 end
             end
             % for s = 1:S
@@ -217,16 +265,18 @@ for k = 1:K_FWA
 end
 for k = 1:K-K_FWA
     for q = 1:K_FWA
-        for m = 1:M
-            if ismember(m,Serv{q}) && ~ismember(q,set_repeat) 
-                D_Cell_FWA(k,q,:,:) = reshape(D_Cell_FWA(k,q,:,:),[N_UE,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*reshape(channel_dl(m,k,:,:),[N_BS,N_UE])'*reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
+        if ~ismember(q,params.set_repeat) 
+            for m = 1:M
+                if ismember(m,Serv{q})
+                    D_Cell_FWA(k,q,:,:) = reshape(D_Cell_FWA(k,q,:,:),[N_UE,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*reshape(channel_dl(m,k,:,:),[N_BS,N_UE])'*reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
+                end
             end
+            % for s = 1:S
+            %     if ismember(s,Serv_sc{q})
+            %         D_Cell_FWA(k,q,:,:) = reshape(D_Cell_FWA(k,q,:,:),[N_UE,N_CPE_FWA]) + sqrt(p_d_sc*eta_eq_sc(s,q))*reshape(channel_dl_sc(s,k,:,:),[N_SC,N_UE])'*reshape(dl_mmse_precoder_FWA_sc(s,q,:,:),[N_SC,N_CPE_FWA]);
+            %     end
+            % end
         end
-        % for s = 1:S
-        %     if ismember(s,Serv_sc{q})
-        %         D_Cell_FWA(k,q,:,:) = reshape(D_Cell_FWA(k,q,:,:),[N_UE,N_CPE_FWA]) + sqrt(p_d_sc*eta_eq_sc(s,q))*reshape(channel_dl_sc(s,k,:,:),[N_SC,N_UE])'*reshape(dl_mmse_precoder_FWA_sc(s,q,:,:),[N_SC,N_CPE_FWA]);
-        %     end
-        % end
     end
     for q = 1:K-K_FWA
         for m = 1:M
@@ -256,7 +306,7 @@ snr_num_Cell = zeros(K-K_FWA,N_UE);
 snr_den_Cell = zeros(K-K_FWA,N_UE);
 rate_dl = zeros(K,1);
 for k = 1:K_FWA
-    if ~ismember(k,set_repeat) 
+    if ~ismember(k,params.set_repeat) 
         for n = 1:N_CPE_FWA
             DS_FWA(k,n) = (abs(D_FWA_FWA(k,k,n,n)))^2;
             for nn = 1:N_CPE_FWA
@@ -265,7 +315,7 @@ for k = 1:K_FWA
                 end
             end
             for q = 1:K_FWA
-                if (q~=k) && ~ismember(q,set_repeat) 
+                if (q~=k) && ~ismember(q,params.set_repeat) 
                   MUI_FWA(k,n) = MUI_FWA(k,n) + norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
                 end
             end
@@ -287,7 +337,7 @@ for k = 1:K-K_FWA
             end
         end
         for q = 1:K_FWA
-            if ~ismember(q,set_repeat)
+            if ~ismember(q,params.set_repeat) 
                 MUI_Cell(k,n) = MUI_Cell(k,n) + norm(reshape(D_Cell_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
             end
         end
