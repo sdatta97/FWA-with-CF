@@ -14,12 +14,15 @@ p_d = params.rho_tot; % 1*K;
 % p_d_sc = params.rho_tot_sc; % 1*K;
 D = params.D;
 BETA = params.BETA;
-BETA_interCPE = params.BETA_interCPE;
+BETA_interUE = params.BETA_interUE;
 rep_gain = params.repeat_gain;
 BETA = BETA.*D;
 % D_sc = params.D_sc;
 % BETA_sc = params.BETA_sc;
-
+% P_idxs = zeros(M,K_P);
+% [~,P_idxs(1,:)] = mink(BETA(1,:) + (BETA(1,:)<=0).*(1+max(BETA(1,:))),K_P);
+% [~,P_idxs(2,:)] = mink(BETA(2,:) + (BETA(2,:)<=0).*(1+max(BETA(2,:))),K_P);
+% I_idxs = [setdiff(find(D(1,:)),P_idxs(1,:)),setdiff(find(D(2,:)),P_idxs(2,:))];
 %Prepare cell to store the AP indices serving a specficic UE
 Serv = cell(K,1);
 %Prepare cell to store the AP indices not serving a specficic UE
@@ -53,11 +56,10 @@ NoRep = cell(K_FWA,1);
 %Construc the above array and cells
 for k = 1:K_FWA
     if ~ismember(k,params.set_repeat)
-        v = BETA(Serv{k},1:K_FWA)'.*BETA_interCPE(1:K_FWA,k);
+        v = BETA(Serv{k},1:K_FWA)'.*BETA_interUE(1:K_FWA,k);
         v(setdiff(1:K_FWA,params.set_repeat)) = -Inf;
         [~,servingCPEs] =  maxk(v,K_rep);
         NoservingCPEs = setdiff(params.set_repeat,servingCPEs); 
-        
         Rep{k} = servingCPEs;
         NoRep{k} = NoservingCPEs; 
     end

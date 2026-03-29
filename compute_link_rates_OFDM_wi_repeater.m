@@ -3,11 +3,10 @@ M = params.numGNB;
 K_FWA = params.numCPE;
 K = M*params.numUE + params.numCPE;
 BW = params.Band;
-alpha = 0.5;
+alpha = 0;
 I_band = alpha*BW;
 P_band = (1-alpha)*BW/M;
-UE_split = 0.5;
-K_P = floor(UE_split*params.numUE);
+K_P = floor((1-alpha)*params.numUE);
 K_I = K-K_FWA-M*K_P;
 TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
@@ -19,18 +18,21 @@ BETA = params.BETA;
 BETA_interUE = params.BETA_interUE;
 rep_gain = params.repeat_gain;
 BETA = BETA.*D;
-P_idxs = zeros(M,K_P);
-[~,P_idxs(1,:)] = mink(BETA(1,:) + (BETA(1,:)<=0).*(1+max(BETA(1,:))),K_P);
-[~,P_idxs(2,:)] = mink(BETA(2,:) + (BETA(2,:)<=0).*(1+max(BETA(2,:))),K_P);
-I_idxs = [setdiff(find(D(1,:)),P_idxs(1,:)),setdiff(find(D(2,:)),P_idxs(2,:))];
+P_idxs = cell(M,1);
+I_idxs = [];
+for m = 1:M
+    P_idxs{m,1} = find(BETA(m,1+K_FWA:end));
+    % [~,P_idxs_tmp] = mink(BETA(m,K_FWA+non_zero_idxs),min(K_P/M,numel(non_zero_idxs)));
+    I_idxs = [I_idxs,setdiff(find(D(m,1+K_FWA:end)),P_idxs{m,1})];
+end
 %Prepare cell to store the AP indices serving a specfic UE
-Serv = cell(K,1);
+Serv = cell(K-K_FWA,1);
 %Prepare cell to store the AP indices not serving a specfic UE
-NoServ = cell(K,1);
+NoServ = cell(K-K_FWA,1);
 %Construc the above array and cells
-for k = 1:K
-    servingBSs = find(D(:,k)==1);
-    NoservingBSs = find(D(:,k)==0);
+for k = 1:K-K_FWA
+    servingBSs = find(D(:,k+K_FWA)==1);
+    NoservingBSs = find(D(:,k+K_FWA)==0);
     
     Serv{k} = servingBSs;
     NoServ{k} = NoservingBSs;
@@ -42,7 +44,16 @@ Rep = cell(K-K_FWA,1);
 NoRep = cell(K-K_FWA,1);
 %Construc the above array and cells
 for k = 1:K-K_FWA
-    v = BETA(Serv{k+K_FWA},1:K_FWA)'.*BETA_interUE(1:K_FWA,k+K_FWA);
+    % v1 = BETA(Serv{k},1:K_FWA)'.*BETA_interUE(1:K_FWA,k+K_FWA);
+    % v2 = BETA(Serv{k},1:K_FWA)'.*BETA_interUE(1:K_FWA,k+K_FWA) - BETA(NoServ{k},1:K_FWA)'.*BETA_interUE(1:K_FWA,k+K_FWA);
+    % [~,servingCPEs1] =  maxk(v1,K_rep);
+    % [~,servingCPEs2] =  maxk(v2,K_rep);
+    % if (servingCPEs2 ~= servingCPEs1)
+    %     disp("hi");
+    % else
+    %     servingCPEs = servingCPEs1;
+    % end
+    v = BETA(Serv{k},1:K_FWA)'.*BETA_interUE(1:K_FWA,k+K_FWA);
     [~,servingCPEs] =  maxk(v,K_rep);
     NoservingCPEs = setdiff(params.set_repeat,servingCPEs);
     Rep{k} = servingCPEs;
@@ -139,9 +150,9 @@ for k = 1:K-K_FWA
             MCI_dl(k,n) = MCI_dl(k,n) + p_d*abs(eff_channel'*mci_eff_channel./norm(mci_eff_channel))^2;
         end
         if ismember(k,I_idxs)
-            rate_dl(k) = rate_dl(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+            rate_dl(k) = rate_dl(k) + I_band*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
         else
-            rate_dl(k) = rate_dl(k) + (P_band/(numel(P_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+            rate_dl(k) = rate_dl(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
         end
     end
 end

@@ -68,10 +68,11 @@ params.num_antennas_per_gNB = 64;
 params.num_antennas_per_sc = 16;
 params.rho_tot = 10^(0.1*75)*(Band/1e8); 
 params.rho_tot_sc = 10^(0.1*55);
-params.repeat_gain = 1; %10^(0.1*(6.5+20*log10(params.fc/1e6)));
+params.repeat_gain = 10^(0.1*(6.5+20*log10(params.fc/1e6)));
 params.set_repeat = [];
 params.num_repeater_per_cpe = 2;
-params.REPEAT = 0;
+params.CELL_REPEAT = 1;
+params.FWA_REPEAT = 1;
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -130,7 +131,7 @@ for idxBSDensity = 1:length(lambda_BS)
         K_FWA = params.numCPE;
         K = params.numCPE + M*params.numUE; 
         params.BETA_interUE = db2pow(gainOverNoisedB_ue);  
-        if params.REPEAT
+        if params.CELL_REPEAT
             params.BETA = db2pow(gainOverNoisedB);   
             if params.SC
                 params.D = D_small;
@@ -192,7 +193,7 @@ for idxBSDensity = 1:length(lambda_BS)
         CPE_idxs = 1:M*numCPE_all;
         params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
         params.R_cpe = R_cpe;
-        params.R_interue = R_interue;
+        params.R_interue = R_interue(:,:,1:M*numCPE_all,1:M*numCPE_all);
         params.R_ue = []; 
         params.set_repeat = [];
         rate_dl = zeros(K,nbrOfRealizations);
@@ -224,7 +225,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 end
                 [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
                 K_FWA_max = sum(FWA_util>0);
-                REPEAT = params.REPEAT && (K_FWA_max < K_FWA);  
+                REPEAT = params.FWA_REPEAT && (K_FWA_max < K_FWA);  
                 if REPEAT
                     CPE_idxs = setdiff(find(FWA_util>0),params.set_repeat);
                     params.set_repeat = find(FWA_util>0);
@@ -257,7 +258,7 @@ for idxBSDensity = 1:length(lambda_BS)
         
             %Taking care of folder directory creation etc
             dataFolder = 'resultData';
-            rateFolder = strcat(dataFolder,'/FWA_multi_cell_present_results');
+            rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_fixed');
             if not(isfolder(dataFolder))
                 mkdir(dataFolder)
             end
