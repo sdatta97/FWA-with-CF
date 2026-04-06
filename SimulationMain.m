@@ -11,7 +11,7 @@ if (isempty(aID))
 end
 if(isempty(aID))
     warning('aID is empty. Replacing it with 0010.')
-    aID = '0000';
+    aID = '0084';
 end
 % for aID = 0:99
 %RNG seed.
@@ -91,7 +91,7 @@ params.nbrOfRealizations = 10;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 1e6*(25:25:300);
+r_min_arr = 300e6; %1e6*(25:25:300);
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations
@@ -218,17 +218,19 @@ for idxBSDensity = 1:length(lambda_BS)
                     CPE_idxs = setdiff(find(FWA_util>0),params.set_repeat);
                     params.set_repeat = find(FWA_util>0);
                     not_set_repeat = setdiff(1:M*numCPE_all,params.set_repeat);
-                    current_min_rate = min(mean_rate_dl_FWA(CPE_idxs));
-                    rate_dl(union(CPE_idxs,not_set_repeat),:) = rate_dl(union(CPE_idxs,not_set_repeat),:)*params.r_min_FWA/current_min_rate;
-                    mean_rate_dl_FWA(union(CPE_idxs,not_set_repeat)) = mean(rate_dl(union(CPE_idxs,not_set_repeat),:),2);
-                    params.Band = params.Band*(1-(params.r_min_FWA/current_min_rate));
-                    for n = 1:nbrOfRealizations
-                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);                        
-                        rate_dl(:,n) = compute_link_rates_MIMO_mmse_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est, Band_FWA);                                          
+                    if (numel(CPE_idxs) > 0)
+                        current_min_rate = min(mean_rate_dl_FWA(CPE_idxs));
+                        rate_dl(union(CPE_idxs,not_set_repeat),:) = rate_dl(union(CPE_idxs,not_set_repeat),:)*params.r_min_FWA/current_min_rate;
+                        mean_rate_dl_FWA(union(CPE_idxs,not_set_repeat)) = mean(rate_dl(union(CPE_idxs,not_set_repeat),:),2);
+                        params.Band = params.Band*(1-(params.r_min_FWA/current_min_rate));
+                        for n = 1:nbrOfRealizations
+                            [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);                        
+                            rate_dl(:,n) = compute_link_rates_MIMO_mmse_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est, Band_FWA);                                          
+                        end
+                        mean_rate_dl_FWA(not_set_repeat) = mean_rate_dl_FWA(not_set_repeat) + mean(rate_dl(not_set_repeat,:),2);
+                        [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
+                        K_FWA_max = sum(FWA_util>0);
                     end
-                    mean_rate_dl_FWA(not_set_repeat) = mean_rate_dl_FWA(not_set_repeat) + mean(rate_dl(not_set_repeat,:),2);
-                    [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
-                    K_FWA_max = sum(FWA_util>0);
                 end
             end
             sum_FWA_rate = sum(mean_rate_dl_FWA);
