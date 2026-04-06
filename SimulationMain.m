@@ -246,7 +246,7 @@ for idxBSDensity = 1:length(lambda_BS)
         
             %Taking care of folder directory creation etc
             dataFolder = 'resultData';
-            rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_fixed');
+            rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_fixed_FWA_cf');
             if not(isfolder(dataFolder))
                 mkdir(dataFolder)
             end
