@@ -1,4 +1,4 @@
-function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances,distancesUEs] = generateSetup(params,seed)
+function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesUEs] = generateSetup(params,seed)
 %This function generates realizations of the simulation setup described in
 %Section 5.3.
 %
@@ -52,7 +52,7 @@ function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotInd
 L = size(params.locationsBS,1);
 K_FWA = params.numCPE;
 K = L*params.numUE+params.numCPE;
-Lmax = 1; %params.Lmax;
+Lmax = params.Lmax;
 N = params.num_antennas_per_gNB;
 N_UE_FWA = params.N_UE_FWA;
 N_UE_cell = params.N_UE_cell;
@@ -104,10 +104,8 @@ R_ue = zeros(N_UE_cell,N_UE_cell,L,K-K_FWA);
 distances = zeros(L,K);
 distancesUEs = zeros(K,K);
 pilotIndex = zeros(K,1);
-% D = zeros(L,K,nbrOfSetups);
-% D = [ones(L,K_FWA),zeros(L,K-K_FWA)];
-D = ones(L,K);
-D_small = zeros(L,K);
+D_FWA = ones(L,K_FWA);
+D_cell = ones(L,K-K_FWA);
     
 %Random AP locations with uniform distribution
 locationsBS = params.locationsBS;
@@ -275,19 +273,14 @@ end
 %         
 %     end
 
-for k = 1:K
+for k = 1:K_FWA
     [~, idxs] = sort(gainOverNoisedB(:,k), 'descend');
     idxs_not_chosen = idxs((Lmax+1):end);
-    D(idxs_not_chosen,k) = 0;
+    D_FWA(idxs_not_chosen,k) = 0;
 end
-% D(:,(1+K_FWA):K) = 0;
-%Determine the AP serving each UE in the small-cell setup according to
-%(5.47) by considering only the APs from the set M_k for UE k, i.e.,
-%where D(:,k) is one.
-for k=1:K
-    tempmat = -inf*ones(L,1);
-    tempmat(D(:,k)==1,1) = gainOverNoisedB(D(:,k)==1,k);
-    [~,servingAP] = max(tempmat);
-    D_small(servingAP,k) = 1;        
-end    
+for k = 1:K-K_FWA
+    [~, idxs] = sort(gainOverNoisedB(:,k+K_FWA), 'descend');
+    idxs_not_chosen = idxs(2:end);
+    D_cell(idxs_not_chosen,k) = 0;
+end
 end

@@ -12,9 +12,9 @@ N_CPE_FWA = size(channel_dl_FWA,4);
 N_UE = size(channel_dl,4);
 p_d = params.rho_tot; % 1*K;
 % p_d_sc = params.rho_tot_sc; % 1*K;
-D = params.D;
-BETA = params.BETA;
-BETA = BETA.*D;
+D_FWA = params.D_FWA;
+% BETA = params.BETA;
+% BETA_FWA = BETA(:,1:K_FWA).*D_FWA;
 set_repeat = params.set_repeat;
 % D_sc = params.D_sc;
 % BETA_sc = params.BETA_sc;
@@ -29,11 +29,10 @@ NoServ = cell(K,1);
 % NoServ_sc = cell(K,1);
 %Construc the above array and cells
 for k = 1:K
-    servingBSs = find(D(:,k)==1);
-    NoservingBSs = find(D(:,k)==0);
+    servingBSs = find(D_FWA(:,k)==1);
+    NoservingBSs = find(D_FWA(:,k)==0);
     % servingSCs = find(D_sc(:,k)==1);
-    % NoservingSCs = find(D_sc(:,k)==0);    
-    
+    % NoservingSCs = find(D_sc(:,k)==0);
     Serv{k} = servingBSs;
     NoServ{k} = NoservingBSs;
     % Serv_sc{k} = servingSCs;
@@ -168,7 +167,7 @@ for m = 1:M
     end
     if (term > 0)
         setA = 1:K;
-        eta_eq(m,setA(~ismember(setA,set_repeat))) = (1/term)*D(m,setA(~ismember(setA,set_repeat)));
+        eta_eq(m,setA(~ismember(setA,set_repeat))) = (1/term)*D_FWA(m,setA(~ismember(setA,set_repeat)));
     end
 end
 % eta_eq_sc = zeros(S,K);

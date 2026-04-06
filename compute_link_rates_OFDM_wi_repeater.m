@@ -13,17 +13,19 @@ N_BS = size(channel_dl,3);
 N_UE = size(channel_dl,4);
 N_CPE_FWA = size(channel_dl_FWA,4);
 p_d = params.rho_tot; % 1*K;
-D = params.D;
+D_FWA = params.D_FWA;
+D_cell = params.D_cell;
 BETA = params.BETA;
 BETA_interUE = params.BETA_interUE;
 rep_gain = params.repeat_gain;
-BETA = BETA.*D;
+BETA_FWA = BETA(:,1:K_FWA).*D_FWA;
+BETA_cell = BETA(:,1+K_FWA:end).*D_cell;
 P_idxs = cell(M,1);
 I_idxs = [];
 for m = 1:M
-    P_idxs{m,1} = find(BETA(m,1+K_FWA:end));
+    P_idxs{m,1} = find(BETA_cell(m,:));
     % [~,P_idxs_tmp] = mink(BETA(m,K_FWA+non_zero_idxs),min(K_P/M,numel(non_zero_idxs)));
-    I_idxs = [I_idxs,setdiff(find(D(m,1+K_FWA:end)),P_idxs{m,1})];
+    I_idxs = [I_idxs,setdiff(find(D_cell(m,:)),P_idxs{m,1})];
 end
 %Prepare cell to store the AP indices serving a specfic UE
 Serv = cell(K-K_FWA,1);
@@ -31,8 +33,8 @@ Serv = cell(K-K_FWA,1);
 NoServ = cell(K-K_FWA,1);
 %Construc the above array and cells
 for k = 1:K-K_FWA
-    servingBSs = find(D(:,k+K_FWA)==1);
-    NoservingBSs = find(D(:,k+K_FWA)==0);
+    servingBSs = find(D_cell(:,k)==1);
+    NoservingBSs = find(D_cell(:,k)==0);
     
     Serv{k} = servingBSs;
     NoServ{k} = NoservingBSs;
@@ -53,7 +55,7 @@ for k = 1:K-K_FWA
     % else
     %     servingCPEs = servingCPEs1;
     % end
-    v = BETA(Serv{k},1:K_FWA)'.*BETA_interUE(1:K_FWA,k+K_FWA);
+    v = BETA_FWA(Serv{k},:)'.*BETA_interUE(1:K_FWA,k+K_FWA);
     [~,servingCPEs] =  maxk(v,K_rep);
     NoservingCPEs = setdiff(params.set_repeat,servingCPEs);
     Rep{k} = servingCPEs;

@@ -47,7 +47,6 @@ params.Kt_Kr_vsUE  = 0; %0.175^2; %0.175^2; %[1,2,3,4];  %to save 1=AP 0.1,UE=0.
 params.pilot_pow = 100;  % 0.1W   % UL pilot. power (W)
 params.noiseFigure = 9; % gue
 params.sigma_sf =4;    
-params.SC = 1; %0 - CF, 1 - SC
 %% Define simulation setup
 
 %Angular standard deviation in the local scattering model (in radians)
@@ -72,7 +71,7 @@ params.repeat_gain = 10^(0.1*(6.5+20*log10(params.fc/1e6)));
 params.set_repeat = [];
 params.num_repeater_per_cpe = 2;
 params.CELL_REPEAT = 1;
-params.FWA_REPEAT = 1;
+params.FWA_REPEAT = 0;
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -83,7 +82,7 @@ params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
 lambda_UE = 200:200:1000;
-params.Lmax = 3;
+params.Lmax = 2;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
 params.loss_pc_FWA = 5/100;
@@ -115,8 +114,8 @@ for idxBSDensity = 1:length(lambda_BS)
         params.numCPE = M*numCPE_all;
         params.CPE_locations = CPE_locations;
         params.Band = Band; %Communication bandwidth
-        [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,str2double(aID));
-        % [gainOverNoisedB,gainOverNoisedB_cpe,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,aID);
+        [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,str2double(aID));
+        % [gainOverNoisedB,gainOverNoisedB_cpe,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,aID);
         ASD_VALUE = params.ASD_VALUE;
         ASD_CORR = params.ASD_CORR;
         Kt_Kr_vsUE = params.Kt_Kr_vsUE;
@@ -133,11 +132,8 @@ for idxBSDensity = 1:length(lambda_BS)
         params.BETA_interUE = db2pow(gainOverNoisedB_ue);  
         if params.CELL_REPEAT
             params.BETA = db2pow(gainOverNoisedB);   
-            if params.SC
-                params.D = D_small;
-            else
-                params.D = D;
-            end
+            params.D_FWA = D_FWA;
+            params.D_cell = D_cell;
             params.R_gNB = R_gNB;
             params.R_cpe = R_cpe;
             params.R_interue = R_interue;
@@ -153,11 +149,7 @@ for idxBSDensity = 1:length(lambda_BS)
             params.numCPE = 0;
             params.CPE_locations = [];
             params.BETA = db2pow(gainOverNoisedB(:,1+M*numCPE_all:end));   
-            if params.SC
-                params.D = D_small(:,1+M*numCPE_all:end);
-            else
-                params.D = D(:,1+M*numCPE_all:end);
-            end
+            params.D = D(:,1+M*numCPE_all:end);
             params.R_gNB = R_gNB(:,:,:,1+M*numCPE_all:end);
             params.R_cpe = [];
             params.R_interue = [];
@@ -185,11 +177,7 @@ for idxBSDensity = 1:length(lambda_BS)
         K = params.numCPE + M*params.numUE; 
         params.CPE_locations = CPE_locations;
         params.BETA = db2pow(gainOverNoisedB(:,1:M*numCPE_all));   
-        if params.SC
-            params.D = D_small(:,1:M*numCPE_all);
-        else
-            params.D = D(:,1:M*numCPE_all);
-        end
+        params.D_cell = [];
         CPE_idxs = 1:M*numCPE_all;
         params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
         params.R_cpe = R_cpe;
@@ -250,7 +238,7 @@ for idxBSDensity = 1:length(lambda_BS)
             params.R_cpe = R_cpe;
             params.R_interue = R_interue;
             params.R_ue = []; 
-            params.D = D(:,1:M*numCPE_all);
+            params.D_FWA = D_FWA;
             params.set_repeat = [];
             mean_rate_dl_FWA = save_old_mean_FWA;
             rate_dl = save_old_rate;
@@ -279,7 +267,7 @@ for idxBSDensity = 1:length(lambda_BS)
     
             deployRange = params.deployRange;
             numBS = size(params.locationsBS,1);
-            result_string = strcat('/results_numFWA_',num2str(params.SC), 'SC_', num2str(numCPE_all),...
+            result_string = strcat('/results_numFWA_',num2str(params.Lmax), 'Lmax_', num2str(numCPE_all),...
                 'CPE_',num2str(lambda_BS(idxBSDensity)),...
                 'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
                 'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
