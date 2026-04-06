@@ -91,7 +91,7 @@ params.nbrOfRealizations = 10;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 300e6; %1e6*(25:25:300);
+r_min_arr = 1e6*(25:25:275);
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations
