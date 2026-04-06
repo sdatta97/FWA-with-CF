@@ -1,7 +1,7 @@
 %Taken from 
 % https://in.mathworks.com/matlabcentral/answers/
 %   538119-how-to-import-to-matlab-many-text-files-as-table-type
-projectdir = '/Users/sdatta/Desktop/FWA_data/FWA_multi_cell_repeater_fixed';
+projectdir = '/Users/sdatta/Desktop/FWA_data/FWA_multi_cell_repeater_fixed_FWA_cf';
 % projectdir = '/Users/sdatta/FWA-with-CF/resultData/FWA_multi_cell_repeater_fixed';
 dinfo = dir(fullfile(projectdir, '*.csv'));   %use appropriate extension
 filenames = fullfile({dinfo.folder}, {dinfo.name});
@@ -42,5 +42,5 @@ end
 
 summaryTable  = groupsummary(combinedTable,changingVars,{'mean','std','median'});
 
-writetable(summaryTable,'./SE_comp_fwa_multi_cell_50CPE_5lBS_varyUEdensity_c_band_64ntx_ofdma_repeater_fixed.txt')
-writetable(summaryTable,'./SE_comp_fwa_multi_cell_50CPE_5lBS_varyUEdensity_c_band_64ntx_ofdma_repeater_fixed.csv')
+writetable(summaryTable,'./K_se_comp_fwa_multi_cell_50CPE_5lBS_varyUEdensity_rmin_c_band_64ntx_ofdma_repeater_FWA_cf.txt')
+writetable(summaryTable,'./K_se_comp_fwa_multi_cell_50CPE_5lBS_varyUEdensity_rmin_c_band_64ntx_ofdma_repeater_FWA_cf.csv')

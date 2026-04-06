@@ -71,7 +71,7 @@ params.repeat_gain = 10^(0.1*(6.5+20*log10(params.fc/1e6)));
 params.set_repeat = [];
 params.num_repeater_per_cpe = 2;
 params.CELL_REPEAT = 1;
-params.FWA_REPEAT = 0;
+params.FWA_REPEAT = 1;
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -246,7 +246,7 @@ for idxBSDensity = 1:length(lambda_BS)
         
             %Taking care of folder directory creation etc
             dataFolder = 'resultData';
-            rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_fixed_FWA_cf');
+            rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_fixed_FWA_cf_repeat');
             if not(isfolder(dataFolder))
                 mkdir(dataFolder)
             end

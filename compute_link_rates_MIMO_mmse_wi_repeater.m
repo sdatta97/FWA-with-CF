@@ -12,11 +12,11 @@ N_CPE_FWA = size(channel_dl_FWA,4);
 N_UE = size(channel_dl,4);
 p_d = params.rho_tot; % 1*K;
 % p_d_sc = params.rho_tot_sc; % 1*K;
-D = params.D;
+D_FWA = params.D_FWA;
 BETA = params.BETA;
 BETA_interUE = params.BETA_interUE;
 rep_gain = params.repeat_gain;
-BETA = BETA.*D;
+BETA = BETA.*D_FWA;
 % D_sc = params.D_sc;
 % BETA_sc = params.BETA_sc;
 % P_idxs = zeros(M,K_P);
@@ -33,8 +33,8 @@ NoServ = cell(K,1);
 % NoServ_sc = cell(K,1);
 %Construc the above array and cells
 for k = 1:K
-    servingBSs = find(D(:,k)==1);
-    NoservingBSs = find(D(:,k)==0);
+    servingBSs = find(D_FWA(:,k)==1);
+    NoservingBSs = find(D_FWA(:,k)==0);
     % servingSCs = find(D_sc(:,k)==1);
     % NoservingSCs = find(D_sc(:,k)==0);    
     
@@ -56,12 +56,16 @@ NoRep = cell(K_FWA,1);
 %Construc the above array and cells
 for k = 1:K_FWA
     if ~ismember(k,params.set_repeat)
-        v = BETA(Serv{k},1:K_FWA)'.*BETA_interUE(1:K_FWA,k);
-        v(setdiff(1:K_FWA,params.set_repeat)) = -Inf;
-        [~,servingCPEs] =  maxk(v,K_rep);
-        NoservingCPEs = setdiff(params.set_repeat,servingCPEs); 
-        Rep{k} = servingCPEs;
-        NoRep{k} = NoservingCPEs; 
+        for m = 1:M
+            if ismember(m,Serv{k})
+                v = BETA(m,1:K_FWA)'.*BETA_interUE(1:K_FWA,k);
+                v(setdiff(1:K_FWA,params.set_repeat)) = -Inf;
+                [~,servingCPEs] =  maxk(v,K_rep);
+                NoservingCPEs = setdiff(params.set_repeat,servingCPEs); 
+                Rep{k} = union(Rep{k},servingCPEs);
+                NoRep{k} = union(NoRep{k}, NoservingCPEs); 
+            end
+        end
     end
 end
 %% initialization of c
@@ -209,7 +213,7 @@ for m = 1:M
     end
     if (term > 0)
         setA = 1:K;
-        eta_eq(m,setA(~ismember(setA,params.set_repeat))) = (1/term)*D(m,setA(~ismember(setA,params.set_repeat)));
+        eta_eq(m,setA(~ismember(setA,params.set_repeat))) = (1/term)*D_FWA(m,setA(~ismember(setA,params.set_repeat)));
     end
 end
 % eta_eq_sc = zeros(S,K);
