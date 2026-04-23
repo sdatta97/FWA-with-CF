@@ -81,7 +81,7 @@ params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 200:200:1000;
+lambda_UE = 1000;
 params.Lmax = 2;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
@@ -91,7 +91,7 @@ params.nbrOfRealizations = 10;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 1e6*(25:25:275);
+r_min_arr = 1e6*(25:25:300);
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations
@@ -206,8 +206,8 @@ for idxBSDensity = 1:length(lambda_BS)
                     params.set_repeat = [params.set_repeat; CPE_idxs];
                     not_set_repeat = setdiff(1:M*numCPE_all,params.set_repeat);
                     for n = 1:nbrOfRealizations
-                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-                        rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);                                              
+                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, ~, ~] = computePhysicalChannels_sub6_MIMO(params);
+                        rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
                     end
                     mean_rate_dl_FWA(not_set_repeat) = mean(rate_dl(not_set_repeat,:),2);
                 end
@@ -225,7 +225,7 @@ for idxBSDensity = 1:length(lambda_BS)
                         params.Band = params.Band*(1-(params.r_min_FWA/current_min_rate));
                         for n = 1:nbrOfRealizations
                             [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);                        
-                            rate_dl(:,n) = compute_link_rates_MIMO_mmse_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est, Band_FWA);                                          
+                            rate_dl(:,n) = compute_link_rates_MIMO_mmse_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);                                          
                         end
                         mean_rate_dl_FWA(not_set_repeat) = mean_rate_dl_FWA(not_set_repeat) + mean(rate_dl(not_set_repeat,:),2);
                         [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
