@@ -57,7 +57,7 @@ params.ASD_theta = 0; %deg2rad(15);  %elevation angle
 params.p = 100;
 
 numCPE_all = 50; %5:5:20;
-Band = 100e6;
+Band = 80e6;
 
 %Prepare to save simulation results
 %% Room Setup, UE placement, UE height
@@ -81,7 +81,7 @@ params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 1000;
+lambda_UE = 200:200:1000;
 params.Lmax = 2;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
