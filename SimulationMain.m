@@ -187,7 +187,7 @@ for idxBSDensity = 1:length(lambda_BS)
         rate_dl = zeros(K,nbrOfRealizations);
         for n = 1:nbrOfRealizations
             [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-            rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);                                              
+            rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
         end
         mean_rate_dl_FWA = mean(rate_dl,2);
         save_old_rate = rate_dl;
