@@ -12,12 +12,17 @@ N_CPE_FWA = size(channel_dl_FWA,4);
 N_UE = size(channel_dl,4);
 p_d = params.rho_tot; % 1*K;
 % p_d_sc = params.rho_tot_sc; % 1*K;
-D_FWA = params.D_FWA;
+if params.FWA_REPEAT
+    D_FWA = params.D_FWA;
+else
+    D_FWA = params.D;
+end
 % BETA = params.BETA;
 % BETA_FWA = BETA(:,1:K_FWA).*D_FWA;
 set_repeat = params.set_repeat;
 % D_sc = params.D_sc;
 % BETA_sc = params.BETA_sc;
+SI_cancel_factor = params.SI_cancel_factor;
 
 %Prepare cell to store the AP indices serving a specficic UE
 Serv = cell(K,1);
@@ -265,7 +270,7 @@ for k = 1:K_FWA
             end
             for q = 1:K_FWA
                 if (q~=k) && ~ismember(q,set_repeat) 
-                  MUI_FWA(k,n) = MUI_FWA(k,n) + norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
+                  MUI_FWA(k,n) = MUI_FWA(k,n) + SI_cancel_factor*norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
                 end
             end
             for q = 1:K-K_FWA

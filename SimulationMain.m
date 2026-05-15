@@ -38,7 +38,8 @@ params.price_FWA_per_bit = 0.14;
 params.r_min_cell = 35e6;
 params.r_max_FWA = 1e9;
 %%
-params.CH_estimation = 0;  % 1= have channel estimatio
+params.CH_estimation = 0;  % 1= have channel estimation
+params.UE_split = 1; %fraction in I_band
 %%
 params.ASD_VALUE = 0;%[0,0.25,0.5,0.75,1];  % [0,30,10]; %
 params.ASD_CORR = 0;
@@ -72,6 +73,7 @@ params.set_repeat = [];
 params.num_repeater_per_cpe = 2;
 params.CELL_REPEAT = 1;
 params.FWA_REPEAT = 1;
+params.SI_cancel_factor = 10^(0.1*-20); %inter-BS interference cancellation factor
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -82,7 +84,7 @@ params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
 lambda_UE = 200:200:1000;
-params.Lmax = 2;
+params.Lmax = 1;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
 params.loss_pc_FWA = 5/100;

@@ -60,7 +60,7 @@ params.UE_split = 0; %fraction in I_band
 params.BEAM = 0;
 
 numCPE_all = 50; %5:5:20;
-Band = 80e6;
+Band = 20e6;
 
 %Prepare to save simulation results
 %% Room Setup, UE placement, UE height
@@ -70,6 +70,8 @@ params.num_antennas_per_gNB = 64;
 params.num_antennas_per_sc = 16;
 params.rho_tot = 10^(0.1*75)*(Band/1e8); 
 params.rho_tot_sc = 10^(0.1*55);
+params.rho_tot_ul = 10^(0.1*23);
+params.rho_tot_ul_cpe = 10^(0.1*29);
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -95,7 +97,7 @@ params.FWA_REPEAT = 0;
 params.SI_cancel_factor = 10^(0.1*-5); %inter-BS interference cancellation factor
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 1e6*(25:25:300);
+r_min_arr = 1e6*(5:5:60);
 %% Simulation FR1 setup 
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations
@@ -146,9 +148,9 @@ for idxBSDensity = 1:length(lambda_BS)
         for n = 1:nbrOfRealizations
             [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
             % rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
-            rate_dl(:,n) = compute_link_rates_OFDM(params, channel_dl);                                              
+            rate_dl(:,n) = compute_link_rates_OFDM_ul(params, channel_dl);                                              
         end
-        mean_rate_dl_cell = mean(rate_dl,2);
+        mean_rate_ul_cell = mean(rate_dl,2);
         params.numUE = 0;
         params.numCPE = M*numCPE_all;
         K_FWA = params.numCPE;
@@ -163,10 +165,10 @@ for idxBSDensity = 1:length(lambda_BS)
         rate_dl = zeros(K,nbrOfRealizations);
         for n = 1:nbrOfRealizations
             [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-            rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
+            rate_dl(:,n) = compute_link_rates_MIMO_mmse_ul(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
         end
-        mean_rate_dl_FWA = mean(rate_dl,2);
-        save_old_mean_FWA = mean_rate_dl_FWA;
+        mean_rate_ul_FWA = mean(rate_dl,2);
+        save_old_mean_FWA = mean_rate_ul_FWA;
         Band_FWA = params.Band;
         % for idxrmin = 1:length(r_min_arr)
         %     sum_FWA_se = 0;
@@ -263,7 +265,7 @@ for idxBSDensity = 1:length(lambda_BS)
         % end
         %Taking care of folder directory creation etc
         dataFolder = 'resultData';
-        rateFolder = strcat(dataFolder,'/FWA_SE_comp_multi_cell_no_rmin');
+        rateFolder = strcat(dataFolder,'/FWA_SE_comp_multi_cell_no_rmin_ul');
         if not(isfolder(dataFolder))
             mkdir(dataFolder)
         end
@@ -301,7 +303,7 @@ for idxBSDensity = 1:length(lambda_BS)
         fprintf(fileID,output_categories);
         formatSpec = '%d,%d,%d,%d,%d,%f,%f,%f,%f\n';
         fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
-        lambda_UE(idxUEDensity),deployRange,Band,Band_FWA, mean(mean_rate_dl_cell)/Band, mean(mean_rate_dl_FWA)/Band_FWA);
+        lambda_UE(idxUEDensity),deployRange,Band,Band_FWA, mean(mean_rate_ul_cell)/Band, mean(mean_rate_ul_FWA)/Band_FWA);
         fclose(fileID);
     end
 end

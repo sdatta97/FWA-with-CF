@@ -3,11 +3,10 @@ M = params.numGNB;
 K_FWA = params.numCPE;
 K = M*params.numUE + params.numCPE;
 BW = params.Band;
-alpha = 0.5;
+alpha = params.UE_split;
 I_band = alpha*BW;
 P_band = (1-alpha)*BW/M;
-UE_split = 0.5;
-K_P = floor(UE_split*params.numUE);
+K_P = floor((1-alpha)*params.numUE);
 K_I = K-K_FWA-M*K_P;
 TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
@@ -88,24 +87,46 @@ noise_dl = abs(sqrt(0.5)*(randn(K-K_FWA,N_UE) + 1j*randn(K-K_FWA,N_UE))).^2;
 rate_dl = zeros(K-K_FWA,1);
 for k = 1:K-K_FWA
     for n = 1:N_UE
-        DS_dl(k,n) = p_d*abs(reshape(channel_dl(Serv{k},k,:,n),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,n),N_BS,1)./norm(channel_dl(Serv{k},k,:,n),'fro'))^2;
-        for nn = 1:N_UE
-            if (nn~=n)
-                if (reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)<reshape(channel_dl(Serv{k},k,:,n),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,n),N_BS,1))
-                    MSI_dl(k,n) = p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)./norm(channel_dl(Serv{k},k,:,nn),'fro'))^2;
-                end
-                if ismember(k,I_idxs)
-                    MCI_dl(k,n) = p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*reshape(channel_dl(NoServ{k},k,:,nn),N_BS,1)./norm(channel_dl(NoServ{k},k,:,nn),'fro'))^2;
+        if params.BEAM
+            DS_dl(k,n) = p_d*abs(reshape(channel_dl(Serv{k},k,:,n),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,n),N_BS,1)./norm(channel_dl(Serv{k},k,:,n),'fro'))^2;
+            for nn = 1:N_UE
+                if (nn~=n)
+                    if (reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)<reshape(channel_dl(Serv{k},k,:,n),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,n),N_BS,1))
+                        MSI_dl(k,n) = p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)./norm(channel_dl(Serv{k},k,:,nn),'fro'))^2;
+                    end
+                    if ismember(k,I_idxs)
+                        MCI_dl(k,n) = p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*reshape(channel_dl(NoServ{k},k,:,nn),N_BS,1)./norm(channel_dl(NoServ{k},k,:,nn),'fro'))^2;
+                    end
                 end
             end
-        end
-        if ismember(k,I_idxs)       
-            MCI_dl(k,n) = MCI_dl(k,n) + p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*reshape(channel_dl(NoServ{k},k,:,n),N_BS,1)./norm(channel_dl(NoServ{k},k,:,n),'fro'))^2;
-        end
-        if ismember(k,I_idxs)
-            rate_dl(k) = rate_dl(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+            if ismember(k,I_idxs)       
+                MCI_dl(k,n) = MCI_dl(k,n) + p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*reshape(channel_dl(NoServ{k},k,:,n),N_BS,1)./norm(channel_dl(NoServ{k},k,:,n),'fro'))^2;
+            end
+            if ismember(k,I_idxs)
+                rate_dl(k) = rate_dl(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+            else
+                rate_dl(k) = rate_dl(k) + (P_band/(numel(P_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+            end
         else
-            rate_dl(k) = rate_dl(k) + (P_band/(numel(P_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+            DS_dl(k,n) = p_d*abs(reshape(channel_dl(Serv{k},k,:,n),N_BS,1)'*ones(N_BS,1)./sqrt(N_BS))^2;
+            for nn = 1:N_UE
+                if (nn~=n)
+                    if (reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,nn),N_BS,1)<reshape(channel_dl(Serv{k},k,:,n),N_BS,1)'*reshape(channel_dl(Serv{k},k,:,n),N_BS,1))
+                        MSI_dl(k,n) = p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*ones(N_BS,1)./sqrt(N_BS))^2;
+                    end
+                    if ismember(k,I_idxs)
+                        MCI_dl(k,n) = p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*ones(N_BS,1)./sqrt(N_BS))^2;
+                    end
+                end
+            end
+            if ismember(k,I_idxs)       
+                MCI_dl(k,n) = MCI_dl(k,n) + p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*ones(N_BS,1)./sqrt(N_BS))^2;
+            end
+            if ismember(k,I_idxs)
+                rate_dl(k) = rate_dl(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+            else
+                rate_dl(k) = rate_dl(k) + (P_band/(numel(P_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+            end
         end
     end
 end

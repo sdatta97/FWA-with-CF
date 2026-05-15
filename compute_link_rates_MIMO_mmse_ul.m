@@ -13,8 +13,13 @@ p_d = params.rho_tot; % 1*K;
 % p_d_sc = params.rho_tot_sc; % 1*K;
 p_u = params.rho_tot_ul;
 p_u_cpe = params.rho_tot_ul_cpe;
-D_FWA = params.D_FWA;
+if params.FWA_REPEAT
+    D_FWA = params.D_FWA;
+else
+    D_FWA = params.D;
+end
 BETA = params.BETA;
+SI_cancel_factor = params.SI_cancel_factor;
 % D_sc = params.D_sc;
 % BETA_sc = params.BETA_sc;
 
@@ -241,7 +246,7 @@ for k = 1:K_FWA
         end
         for q = 1:K_FWA
             if (q~=k)
-              MUI_FWA(k,n) = MUI_FWA(k,n) + norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
+              MUI_FWA(k,n) = MUI_FWA(k,n) + SI_cancel_factor*norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
             end
         end
         for q = 1:K-K_FWA
