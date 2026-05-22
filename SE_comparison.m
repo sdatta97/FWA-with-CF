@@ -11,7 +11,7 @@ if (isempty(aID))
 end
 if(isempty(aID))
     warning('aID is empty. Replacing it with 0010.')
-    aID = '0000';
+    aID = '0084';
 end
 % for aID = 0:99
 %RNG seed.
@@ -92,7 +92,7 @@ params.set_repeat = [];
 params.num_repeater_per_cpe = 2;
 params.CELL_REPEAT = 0;
 params.FWA_REPEAT = 0;
-params.SI_cancel_factor = 10^(0.1*-5); %inter-BS interference cancellation factor
+SI_cancel_arr = -20:5:0; %SI cancel factor in dB
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
 r_min_arr = 1e6*(25:25:300);
@@ -149,160 +149,166 @@ for idxBSDensity = 1:length(lambda_BS)
             rate_dl(:,n) = compute_link_rates_OFDM(params, channel_dl);                                              
         end
         mean_rate_dl_cell = mean(rate_dl,2);
-        params.numUE = 0;
-        params.numCPE = M*numCPE_all;
-        K_FWA = params.numCPE;
-        K = params.numCPE + M*params.numUE; 
-        params.CPE_locations = CPE_locations;
-        params.BETA = db2pow(gainOverNoisedB(:,1:M*numCPE_all));   
-        params.D = D_FWA;
-        params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
-        params.R_cpe = R_cpe;
-        params.R_interue = R_interue(:,:,1:M*numCPE_all,1:M*numCPE_all);
-        params.R_ue = []; 
-        rate_dl = zeros(K,nbrOfRealizations);
-        for n = 1:nbrOfRealizations
-            [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-            rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
+        for idxSI = 1:length(SI_cancel_arr)
+            params.SI_cancel_factor = 10^(0.1*SI_cancel_arr(idxSI)); %inter-BS interference cancellation factor
+            params.numUE = 0;
+            params.numCPE = M*numCPE_all;
+            K_FWA = params.numCPE;
+            K = params.numCPE + M*params.numUE; 
+            params.CPE_locations = CPE_locations;
+            params.BETA = db2pow(gainOverNoisedB(:,1:M*numCPE_all));   
+            params.D = D_FWA;
+            params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
+            params.R_cpe = R_cpe;
+            params.R_interue = R_interue(:,:,1:M*numCPE_all,1:M*numCPE_all);
+            params.R_ue = []; 
+            rate_dl = zeros(K,nbrOfRealizations);
+            for n = 1:nbrOfRealizations
+                [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+                rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
+            end
+            mean_rate_dl_FWA = mean(rate_dl,2);
+            save_old_mean_FWA = mean_rate_dl_FWA;
+            Band_FWA = params.Band;
+            % for idxrmin = 1:length(r_min_arr)
+            %     sum_FWA_se = 0;
+            %     params.r_min_FWA = r_min_arr(idxrmin);
+            %     K_FWA_max = 0;
+            %     params.Band = Band_FWA;
+            %     if (params.Band > 0)
+            %         while any(mean_rate_dl_FWA > params.r_max_FWA)
+            %             CPE_idxs = find(mean_rate_dl_FWA > params.r_max_FWA);
+            %             K_FWA_max = K_FWA_max + numel(CPE_idxs);
+            %             params.numCPE = params.numCPE - numel(CPE_idxs);
+            %             sum_FWA_se = sum_FWA_se + sum(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA))/params.Band;
+            %             params.Band = params.Band*(1-(params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA))));
+            %             params.R_gNB(:,:,:,CPE_idxs) = [];
+            %             params.R_cpe(:,:,:,CPE_idxs) = [];
+            %             params.D(:,CPE_idxs) = [];
+            %             rate_dl = zeros(K-K_FWA_max,nbrOfRealizations);
+            %             for n = 1:nbrOfRealizations
+            %                 [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+            %                 rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
+            %             end
+            %             mean_rate_dl_FWA = mean(rate_dl,2);
+            %         end
+            %         [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
+            %         CPE_idxs = find(FWA_util == 0);
+            %         K_FWA_max = K_FWA_max + sum(FWA_util>0);
+            %         rate_dl = zeros(sum(FWA_util > 0),nbrOfRealizations);
+            %         params.numCPE = params.numCPE - numel(CPE_idxs);
+            %         params.R_gNB(:,:,:,CPE_idxs) = [];
+            %         params.R_cpe(:,:,:,CPE_idxs) = [];
+            %         params.D(:,CPE_idxs) = [];
+            %         for n = 1:nbrOfRealizations
+            %             [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+            %             rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                          
+            %         end
+            %         mean_rate_dl_FWA = mean(rate_dl,2);
+            %         sum_FWA_se = sum_FWA_se + sum(mean_rate_dl_FWA)/params.Band;
+            %         params.Band = params.Band*(1-params.r_min_FWA/min(mean_rate_dl_FWA));
+            %     end
+            %     params.CPE_locations = CPE_locations;
+            %     params.numCPE = M*numCPE_all;
+            %     params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
+            %     params.R_cpe = R_cpe;
+            %     params.R_interue = R_interue(:,:,1:M*numCPE_all,1:M*numCPE_all);
+            %     params.R_ue = []; 
+            %     params.D = D_FWA;
+            %     mean_rate_dl_FWA = save_old_mean_FWA;
+            %     %% Recording the Results
+            % 
+            %     %Taking care of folder directory creation etc
+            %     dataFolder = 'resultData';
+            %     rateFolder = strcat(dataFolder,'/FWA_SE_comp_multi_cell_present_results');
+            %     if not(isfolder(dataFolder))
+            %         mkdir(dataFolder)
+            %     end
+            %     if not(isfolder(rateFolder))
+            %         mkdir(rateFolder)
+            %     end
+            % 
+            % 
+            %     %Saving all results as a structure
+            %     dataDescription = {'simOutputs is a 4D array';...
+            %         ', for mesh of params ordered as follows';...
+            %         'First Dimension: discovery_time';...
+            %         'Second Dimension: FailureDetectionTime';...
+            %         'Third Dimension: connection_time (RACH)';...
+            %         'Fourth Dimension: signalingAfterRachTime';...
+            %         '=================================';...
+            %         'Each element is a struct'};
+            % 
+            %     deployRange = params.deployRange;
+            %     numBS = size(params.locationsBS,1);
+            %     result_string = strcat('/results_numFWA_',num2str(params.SC), 'SC_', num2str(numCPE_all),...
+            %         'CPE_',num2str(lambda_BS(idxBSDensity)),...
+            %         'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
+            %         'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
+            %         'lambdaUE_', num2str(deployRange),'deployRange_', ...
+            %         num2str(params.r_min_FWA/10^6),'min_FWA_rate', aID);
+            %     % result_string = strcat('/results_numFWA_',num2str(params.SC), 'SC_', num2str(numCPE_all),...
+            %     %     'CPE_',num2str(lambda_BS(idxBSDensity)),...
+            %     %     'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
+            %     %     'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
+            %     %     'lambdaUE_', num2str(deployRange),'deployRange_', ...
+            %     %     num2str(params.r_min_FWA/10^6),'min_FWA_rate', string(aID));
+            %     recording_text_file_string = strcat(rateFolder,result_string,'.csv');
+            %     fileID = fopen(recording_text_file_string,'w');
+            %     output_categories = ['lambdaBS,','lambdaSC,','numCPE,','lambdaUE,',...
+            %     'deployRange,','r_min_cell,','r_min_FWA,','max_FWA,', 'Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
+            %     fprintf(fileID,output_categories);
+            %     formatSpec = '%d,%d,%d,%d,%d,%f,%f,%d,%f,%f,%f,%f\n';
+            %     fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
+            %     lambda_UE(idxUEDensity),deployRange,params.r_min_cell,params.r_min_FWA,K_FWA_max,Band,Band_FWA, mean(mean_rate_dl_cell)/Band, sum_FWA_se/K_FWA_max);
+            %     fclose(fileID);
+            % end
+            %Taking care of folder directory creation etc
+            dataFolder = 'resultData';
+            rateFolder = strcat(dataFolder,'/FWA_SE_comp_multi_cell_no_rmin_SI_cancel');
+            if not(isfolder(dataFolder))
+                mkdir(dataFolder)
+            end
+            if not(isfolder(rateFolder))
+                mkdir(rateFolder)
+            end
+    
+    
+            %Saving all results as a structure
+            dataDescription = {'simOutputs is a 4D array';...
+                ', for mesh of params ordered as follows';...
+                'First Dimension: discovery_time';...
+                'Second Dimension: FailureDetectionTime';...
+                'Third Dimension: connection_time (RACH)';...
+                'Fourth Dimension: signalingAfterRachTime';...
+                '=================================';...
+                'Each element is a struct'};
+    
+            deployRange = params.deployRange;
+            numBS = size(params.locationsBS,1);
+            result_string = strcat('/results_numFWA_',num2str(params.SC), ...
+                'SC_', num2str(numCPE_all),...
+                'CPE_',num2str(lambda_BS(idxBSDensity)),...
+                'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
+                'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
+                'lambdaUE_', num2str(deployRange), ...
+                'deployRange_',num2str(params.SI_cancel_factor), ...
+                'SI_cancel_',aID);
+            % result_string = strcat('/results_numFWA_',num2str(params.SC), 'SC_', num2str(numCPE_all),...
+            %     'CPE_',num2str(lambda_BS(idxBSDensity)),...
+            %     'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
+            %     'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
+            %     'lambdaUE_', num2str(deployRange),'deployRange_', string(aID));
+            recording_text_file_string = strcat(rateFolder,result_string,'.csv');
+            fileID = fopen(recording_text_file_string,'w');
+            output_categories = ['lambdaBS,','lambdaSC,','numCPE,','lambdaUE,',...
+            'deployRange,','SIcancel,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n'];
+            fprintf(fileID,output_categories);
+            formatSpec = '%d,%d,%d,%d,%d,%d,%f,%f,%f,%f\n';
+            fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
+            lambda_UE(idxUEDensity),deployRange,SI_cancel_arr(idxSI),Band,Band_FWA, mean(mean_rate_dl_cell)/Band, mean(mean_rate_dl_FWA)/Band_FWA);
+            fclose(fileID);
         end
-        mean_rate_dl_FWA = mean(rate_dl,2);
-        save_old_mean_FWA = mean_rate_dl_FWA;
-        Band_FWA = params.Band;
-        % for idxrmin = 1:length(r_min_arr)
-        %     sum_FWA_se = 0;
-        %     params.r_min_FWA = r_min_arr(idxrmin);
-        %     K_FWA_max = 0;
-        %     params.Band = Band_FWA;
-        %     if (params.Band > 0)
-        %         while any(mean_rate_dl_FWA > params.r_max_FWA)
-        %             CPE_idxs = find(mean_rate_dl_FWA > params.r_max_FWA);
-        %             K_FWA_max = K_FWA_max + numel(CPE_idxs);
-        %             params.numCPE = params.numCPE - numel(CPE_idxs);
-        %             sum_FWA_se = sum_FWA_se + sum(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA))/params.Band;
-        %             params.Band = params.Band*(1-(params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA))));
-        %             params.R_gNB(:,:,:,CPE_idxs) = [];
-        %             params.R_cpe(:,:,:,CPE_idxs) = [];
-        %             params.D(:,CPE_idxs) = [];
-        %             rate_dl = zeros(K-K_FWA_max,nbrOfRealizations);
-        %             for n = 1:nbrOfRealizations
-        %                 [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-        %                 rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
-        %             end
-        %             mean_rate_dl_FWA = mean(rate_dl,2);
-        %         end
-        %         [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
-        %         CPE_idxs = find(FWA_util == 0);
-        %         K_FWA_max = K_FWA_max + sum(FWA_util>0);
-        %         rate_dl = zeros(sum(FWA_util > 0),nbrOfRealizations);
-        %         params.numCPE = params.numCPE - numel(CPE_idxs);
-        %         params.R_gNB(:,:,:,CPE_idxs) = [];
-        %         params.R_cpe(:,:,:,CPE_idxs) = [];
-        %         params.D(:,CPE_idxs) = [];
-        %         for n = 1:nbrOfRealizations
-        %             [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-        %             rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                          
-        %         end
-        %         mean_rate_dl_FWA = mean(rate_dl,2);
-        %         sum_FWA_se = sum_FWA_se + sum(mean_rate_dl_FWA)/params.Band;
-        %         params.Band = params.Band*(1-params.r_min_FWA/min(mean_rate_dl_FWA));
-        %     end
-        %     params.CPE_locations = CPE_locations;
-        %     params.numCPE = M*numCPE_all;
-        %     params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
-        %     params.R_cpe = R_cpe;
-        %     params.R_interue = R_interue(:,:,1:M*numCPE_all,1:M*numCPE_all);
-        %     params.R_ue = []; 
-        %     params.D = D_FWA;
-        %     mean_rate_dl_FWA = save_old_mean_FWA;
-        %     %% Recording the Results
-        % 
-        %     %Taking care of folder directory creation etc
-        %     dataFolder = 'resultData';
-        %     rateFolder = strcat(dataFolder,'/FWA_SE_comp_multi_cell_present_results');
-        %     if not(isfolder(dataFolder))
-        %         mkdir(dataFolder)
-        %     end
-        %     if not(isfolder(rateFolder))
-        %         mkdir(rateFolder)
-        %     end
-        % 
-        % 
-        %     %Saving all results as a structure
-        %     dataDescription = {'simOutputs is a 4D array';...
-        %         ', for mesh of params ordered as follows';...
-        %         'First Dimension: discovery_time';...
-        %         'Second Dimension: FailureDetectionTime';...
-        %         'Third Dimension: connection_time (RACH)';...
-        %         'Fourth Dimension: signalingAfterRachTime';...
-        %         '=================================';...
-        %         'Each element is a struct'};
-        % 
-        %     deployRange = params.deployRange;
-        %     numBS = size(params.locationsBS,1);
-        %     result_string = strcat('/results_numFWA_',num2str(params.SC), 'SC_', num2str(numCPE_all),...
-        %         'CPE_',num2str(lambda_BS(idxBSDensity)),...
-        %         'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
-        %         'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
-        %         'lambdaUE_', num2str(deployRange),'deployRange_', ...
-        %         num2str(params.r_min_FWA/10^6),'min_FWA_rate', aID);
-        %     % result_string = strcat('/results_numFWA_',num2str(params.SC), 'SC_', num2str(numCPE_all),...
-        %     %     'CPE_',num2str(lambda_BS(idxBSDensity)),...
-        %     %     'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
-        %     %     'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
-        %     %     'lambdaUE_', num2str(deployRange),'deployRange_', ...
-        %     %     num2str(params.r_min_FWA/10^6),'min_FWA_rate', string(aID));
-        %     recording_text_file_string = strcat(rateFolder,result_string,'.csv');
-        %     fileID = fopen(recording_text_file_string,'w');
-        %     output_categories = ['lambdaBS,','lambdaSC,','numCPE,','lambdaUE,',...
-        %     'deployRange,','r_min_cell,','r_min_FWA,','max_FWA,', 'Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
-        %     fprintf(fileID,output_categories);
-        %     formatSpec = '%d,%d,%d,%d,%d,%f,%f,%d,%f,%f,%f,%f\n';
-        %     fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
-        %     lambda_UE(idxUEDensity),deployRange,params.r_min_cell,params.r_min_FWA,K_FWA_max,Band,Band_FWA, mean(mean_rate_dl_cell)/Band, sum_FWA_se/K_FWA_max);
-        %     fclose(fileID);
-        % end
-        %Taking care of folder directory creation etc
-        dataFolder = 'resultData';
-        rateFolder = strcat(dataFolder,'/FWA_SE_comp_multi_cell_no_rmin');
-        if not(isfolder(dataFolder))
-            mkdir(dataFolder)
-        end
-        if not(isfolder(rateFolder))
-            mkdir(rateFolder)
-        end
-
-
-        %Saving all results as a structure
-        dataDescription = {'simOutputs is a 4D array';...
-            ', for mesh of params ordered as follows';...
-            'First Dimension: discovery_time';...
-            'Second Dimension: FailureDetectionTime';...
-            'Third Dimension: connection_time (RACH)';...
-            'Fourth Dimension: signalingAfterRachTime';...
-            '=================================';...
-            'Each element is a struct'};
-
-        deployRange = params.deployRange;
-        numBS = size(params.locationsBS,1);
-        result_string = strcat('/results_numFWA_',num2str(params.SC), 'SC_', num2str(numCPE_all),...
-            'CPE_',num2str(lambda_BS(idxBSDensity)),...
-            'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
-            'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
-            'lambdaUE_', num2str(deployRange),'deployRange_', aID);
-        % result_string = strcat('/results_numFWA_',num2str(params.SC), 'SC_', num2str(numCPE_all),...
-        %     'CPE_',num2str(lambda_BS(idxBSDensity)),...
-        %     'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
-        %     'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
-        %     'lambdaUE_', num2str(deployRange),'deployRange_', string(aID));
-        recording_text_file_string = strcat(rateFolder,result_string,'.csv');
-        fileID = fopen(recording_text_file_string,'w');
-        output_categories = ['lambdaBS,','lambdaSC,','numCPE,','lambdaUE,',...
-        'deployRange,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n'];
-        fprintf(fileID,output_categories);
-        formatSpec = '%d,%d,%d,%d,%d,%f,%f,%f,%f\n';
-        fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
-        lambda_UE(idxUEDensity),deployRange,Band,Band_FWA, mean(mean_rate_dl_cell)/Band, mean(mean_rate_dl_FWA)/Band_FWA);
-        fclose(fileID);
     end
 end
 tEnd = toc(tStart);

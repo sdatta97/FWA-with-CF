@@ -16,9 +16,13 @@ D = params.D;
 BETA = params.BETA;
 BETA = BETA.*D;
 P_idxs = zeros(M,K_P);
-[~,P_idxs(1,:)] = mink(BETA(1,:) + (BETA(1,:)<=0).*(1+max(BETA(1,:))),K_P);
-[~,P_idxs(2,:)] = mink(BETA(2,:) + (BETA(2,:)<=0).*(1+max(BETA(2,:))),K_P);
-I_idxs = [setdiff(find(D(1,:)),P_idxs(1,:)),setdiff(find(D(2,:)),P_idxs(2,:))];
+if alpha > 0
+    [~,P_idxs(1,:)] = mink(BETA(1,:) + (BETA(1,:)<=0).*(1+max(BETA(1,:))),K_P);
+    [~,P_idxs(2,:)] = mink(BETA(2,:) + (BETA(2,:)<=0).*(1+max(BETA(2,:))),K_P);
+    I_idxs = [setdiff(find(D(1,:)),P_idxs(1,:)),setdiff(find(D(2,:)),P_idxs(2,:))];
+else
+    I_idxs = [];
+end
 %Prepare cell to store the AP indices serving a specfic UE
 Serv = cell(K,1);
 %Prepare cell to store the AP indices not serving a specfic UE

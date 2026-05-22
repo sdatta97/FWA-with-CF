@@ -39,7 +39,8 @@ params.r_min_cell = 35e6;
 params.r_max_FWA = 1e9;
 %%
 params.CH_estimation = 0;  % 1= have channel estimation
-params.UE_split = 1; %fraction in I_band
+params.UE_split = 0; %fraction in I_band
+params.BEAM = 0;
 %%
 params.ASD_VALUE = 0;%[0,0.25,0.5,0.75,1];  % [0,30,10]; %
 params.ASD_CORR = 0;
@@ -71,9 +72,8 @@ params.rho_tot_sc = 10^(0.1*55);
 params.repeat_gain = 10^(0.1*(6.5+20*log10(params.fc/1e6)));
 params.set_repeat = [];
 params.num_repeater_per_cpe = 2;
-params.CELL_REPEAT = 1;
+params.CELL_REPEAT = 0;
 params.FWA_REPEAT = 1;
-params.SI_cancel_factor = 10^(0.1*-20); %inter-BS interference cancellation factor
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -88,6 +88,7 @@ params.Lmax = 1;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
 params.loss_pc_FWA = 5/100;
+params.SI_cancel_factor = 10^(0.1*-10);
 %Number of channel realizations per setup
 params.nbrOfRealizations = 10;
 
@@ -151,7 +152,7 @@ for idxBSDensity = 1:length(lambda_BS)
             params.numCPE = 0;
             params.CPE_locations = [];
             params.BETA = db2pow(gainOverNoisedB(:,1+M*numCPE_all:end));   
-            params.D = D(:,1+M*numCPE_all:end);
+            params.D = D_cell;
             params.R_gNB = R_gNB(:,:,:,1+M*numCPE_all:end);
             params.R_cpe = [];
             params.R_interue = [];
