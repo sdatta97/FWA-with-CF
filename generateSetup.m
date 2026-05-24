@@ -49,9 +49,9 @@ function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotInd
 %License: This code is licensed under the GPLv2 license. If you in any way
 %use this code for research that results in publications, please cite our
 %monograph as described above.
-L = size(params.locationsBS,1);
+M = size(params.locationsBS,1);
 K_FWA = params.numCPE;
-K = L*params.numUE+params.numCPE;
+K = M*params.numUE+params.numCPE;
 Lmax = params.Lmax;
 N = params.num_antennas_per_gNB;
 N_UE_FWA = params.N_UE_FWA;
@@ -95,17 +95,17 @@ decorr = 9;
 antennaSpacing = 1/2; %Half wavelength distance
 
 %Prepare to save results
-gainOverNoisedB = zeros(L,K);
+gainOverNoisedB = zeros(M,K);
 gainOverNoisedB_ue = zeros(K,K);
-R_gNB = zeros(N,N,L,K);
-R_cpe = zeros(N_UE_FWA,N_UE_FWA,L,K_FWA);
+R_gNB = zeros(N,N,M,K);
+R_cpe = zeros(N_UE_FWA,N_UE_FWA,M,K_FWA);
 R_interue = zeros(N_UE_FWA,N_UE_FWA,K,K);
-R_ue = zeros(N_UE_cell,N_UE_cell,L,K-K_FWA);
-distances = zeros(L,K);
+R_ue = zeros(N_UE_cell,N_UE_cell,M,K-K_FWA);
+distances = zeros(M,K);
 distancesUEs = zeros(K,K);
 pilotIndex = zeros(K,1);
-D_FWA = ones(L,K_FWA);
-D_cell = ones(L,K-K_FWA);
+D_FWA = ones(M,K_FWA);
+D_cell = ones(M,K-K_FWA);
     
 %Random AP locations with uniform distribution
 locationsBS = params.locationsBS;
@@ -120,11 +120,11 @@ UEpositions = UEpositions(:,1) + 1i*UEpositions(:,2);
 wrapHorizontal = repmat([-coverageRange_sub6 0 coverageRange_sub6],[3 1]);
 wrapVertical = wrapHorizontal';
 wrapLocations = wrapHorizontal(:)' + 1i*wrapVertical(:)';
-APpositionsWrapped = repmat(APpositions,[1 length(wrapLocations)]) + repmat(wrapLocations,[L 1]);
+APpositionsWrapped = repmat(APpositions,[1 length(wrapLocations)]) + repmat(wrapLocations,[M 1]);
 
 %Prepare to store shadowing correlation matrix
 shadowCorrMatrix = sigma_sf^2*ones(K,K);
-shadowAPrealizations = zeros(K,L);    
+shadowAPrealizations = zeros(K,M);    
 
 shadowCorrMatrix_ue = sigma_sf^2*ones(K,K);
 shadowCPErealizations_ue = zeros(K,K);  
@@ -174,7 +174,7 @@ for k = 1:K
     end
     
     %Generate the shadow fading realizations
-    shadowing = meanvalues + stdvalue*randn(1,L);
+    shadowing = meanvalues + stdvalue*randn(1,M);
     
     %Compute the channel gain divided by noise power
     gainOverNoisedB(:,k) = constantTerm - alpha*log10(distances(:,k)) + shadowing' - noiseVariancedBm;
@@ -233,7 +233,7 @@ for k = 1:K
     end
     
     %Go through all APs
-    for l = 1:L       
+    for l = 1:M       
         %Compute nominal angle between UE k and AP l
         angletoUE_varphi = angle(UEpositions(k)-APpositionsWrapped(l,whichpos(l))); %azimuth angle
         angletoUE_theta = asin(distanceVertical/distances(l,k));  %elevation angle

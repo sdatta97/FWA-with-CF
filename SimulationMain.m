@@ -93,7 +93,7 @@ params.nbrOfRealizations = 10;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 1e6*(25:25:300);
+r_min_arr = 300e6; %1e6*(25:25:300);
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations
@@ -116,27 +116,27 @@ for idxBSDensity = 1:length(lambda_BS)
         params.numCPE = M*numCPE_all;
         params.CPE_locations = CPE_locations;
         params.Band = Band; %Communication bandwidth
-        for idxnumrep = 1:length(num_rep_arr)
+        [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,str2double(aID));
+        % [gainOverNoisedB,gainOverNoisedB_cpe,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,aID);
+        ASD_VALUE = params.ASD_VALUE;
+        ASD_CORR = params.ASD_CORR;
+        Kt_Kr_vsUE = params.Kt_Kr_vsUE;
+        K_Factor = params.K_Factor;
+        RAYLEIGH=params.RAYLEIGH;   %1= rayleigh, % 0=rician
+        Perf_CSI = params.Perf_CSI;
+        cov_area = params.cov_area;
+        pilot_pow = params.pilot_pow; 
+        noiseFigure = params.noiseFigure;
+        sigma_sf = params.sigma_sf;
+        Band = params.Band; %Communication bandwidth
+        K_FWA = params.numCPE;
+        K = params.numCPE + M*params.numUE; 
+        params.BETA_interUE = db2pow(gainOverNoisedB_ue);
+        for idxnumrep = 1:length(num_rep_arr)  
             for idxrepgain = 1:length(rep_gain_arr)
                 params.repeat_gain = rep_gain_arr(idxrepgain);
                 params.set_repeat = [];
                 params.num_repeater_per_cpe = num_rep_arr(idxnumrep);
-                [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,str2double(aID));
-                % [gainOverNoisedB,gainOverNoisedB_cpe,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,aID);
-                ASD_VALUE = params.ASD_VALUE;
-                ASD_CORR = params.ASD_CORR;
-                Kt_Kr_vsUE = params.Kt_Kr_vsUE;
-                K_Factor = params.K_Factor;
-                RAYLEIGH=params.RAYLEIGH;   %1= rayleigh, % 0=rician
-                Perf_CSI = params.Perf_CSI;
-                cov_area = params.cov_area;
-                pilot_pow = params.pilot_pow; 
-                noiseFigure = params.noiseFigure;
-                sigma_sf = params.sigma_sf;
-                Band = params.Band; %Communication bandwidth
-                K_FWA = params.numCPE;
-                K = params.numCPE + M*params.numUE; 
-                params.BETA_interUE = db2pow(gainOverNoisedB_ue);  
                 if params.CELL_REPEAT
                     params.BETA = db2pow(gainOverNoisedB);   
                     params.D_FWA = D_FWA;
