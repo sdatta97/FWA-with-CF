@@ -1,7 +1,7 @@
 %Taken from 
 % https://in.mathworks.com/matlabcentral/answers/
 %   538119-how-to-import-to-matlab-many-text-files-as-table-type
-projectdir = '/Users/sdatta/Desktop/FWA_data/FWA_SE_comp_multi_cell_no_rmin_SI_cancel_ul';
+projectdir = '/Users/sdatta/Desktop/FWA_data/FWA_multi_cell_repeater_fixed_FWA_cf_var_rep_num_gain_ul';
 % projectdir = '/Users/sdatta/FWA-with-CF/resultData/FWA_multi_cell_repeater_fixed';
 dinfo = dir(fullfile(projectdir, '*.csv'));   %use appropriate extension
 filenames = fullfile({dinfo.folder}, {dinfo.name});
@@ -27,14 +27,14 @@ colNames = combinedTable.Properties.VariableNames;
 % for i=1:(length(colNames)-4)
 %     changingVars{i} = colNames{i};
 % end
-% changingVars = cell(1,length(colNames)-5);
-% for i=1:(length(colNames)-5)
-%     changingVars{i} = colNames{i};
-% end
-changingVars = cell(1,length(colNames)-2);
-for i=1:(length(colNames)-2)
+changingVars = cell(1,length(colNames)-5);
+for i=1:(length(colNames)-5)
     changingVars{i} = colNames{i};
 end
+% changingVars = cell(1,length(colNames)-2);
+% for i=1:(length(colNames)-2)
+%     changingVars{i} = colNames{i};
+% end
 % changingVars = cell(1,length(colNames)-1);
 % for i=1:(length(colNames)-1)
 %     changingVars{i} = colNames{i};
@@ -42,5 +42,5 @@ end
 
 summaryTable  = groupsummary(combinedTable,changingVars,{'mean','std','median'});
 
-writetable(summaryTable,'./SE_comp_fwa_multi_cell_50CPE_5lBS_varyUEdensity_SI_cancel_ul.txt')
-writetable(summaryTable,'./SE_comp_fwa_multi_cell_50CPE_5lBS_varyUEdensity_SI_cancel_ul.csv')
+writetable(summaryTable,'./Band_var_fwa_multi_cell_50CPE_5lBS_varyUEdensity_rep_ul.txt')
+writetable(summaryTable,'./Band_var_fwa_multi_cell_50CPE_5lBS_varyUEdensity_rep_ul.csv')

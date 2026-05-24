@@ -83,7 +83,7 @@ params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
 lambda_UE = 1000;
-params.Lmax = 2;
+params.Lmax = 1;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
 params.loss_pc_FWA = 5/100;
@@ -252,6 +252,7 @@ for idxBSDensity = 1:length(lambda_BS)
                     params.R_ue = [];
                     params.D_FWA = D_FWA;
                     params.set_repeat = [];
+                    params.Band = Band;
                     mean_rate_ul_FWA = save_old_mean_FWA;
                     rate_ul = save_old_rate;
                     %% Recording the Results

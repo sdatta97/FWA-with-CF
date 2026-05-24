@@ -250,6 +250,7 @@ for idxBSDensity = 1:length(lambda_BS)
                     params.R_ue = []; 
                     params.D_FWA = D_FWA;
                     params.set_repeat = [];
+                    params.Band = Band;
                     mean_rate_dl_FWA = save_old_mean_FWA;
                     rate_dl = save_old_rate;
                     %% Recording the Results
