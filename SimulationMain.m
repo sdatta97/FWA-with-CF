@@ -80,20 +80,20 @@ params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 1000;
+lambda_UE = 200:200:1000;
 params.Lmax = 1;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
 params.loss_pc_FWA = 5/100;
 params.SI_cancel_factor = 10^(0.1*-5);
-rep_gain_arr = 10:10:70; %in dB %10^(0.1*(6.5+20*log10(params.fc/1e6)));
-num_rep_arr = 1:1:5;
+rep_gain_arr = 20; % 10:10:70; %in dB %10^(0.1*(6.5+20*log10(params.fc/1e6)));
+num_rep_arr = 2; %1:1:5;
 %Number of channel realizations per setup
 params.nbrOfRealizations = 10;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 300e6; %1e6*(25:25:300);
+r_min_arr = 1e6*(25:25:300);
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations
@@ -258,7 +258,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 
                     %Taking care of folder directory creation etc
                     dataFolder = 'resultData';
-                    rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_fixed_FWA_cf_var_rep_num_gain');
+                    rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_fixed_FWA_cf_fix_rep_num_gain_var_UE_density');
                     if not(isfolder(dataFolder))
                         mkdir(dataFolder)
                     end
