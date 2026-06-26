@@ -192,6 +192,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 params.BETA = db2pow(gainOverNoisedB(:,1:M*numCPE_all));
                 params.D_cell = [];
                 params.D_FWA = D_FWA;
+                params.D = D_FWA;
                 CPE_idxs = 1:M*numCPE_all;
                 params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
                 params.R_cpe = R_cpe;
