@@ -39,13 +39,11 @@ params.r_min_cell = 35e6;
 params.r_max_FWA = 1e9;
 %%
 params.CH_estimation = 0;  % 1= have channel estimation
-params.UE_split = 0; %fraction in I_band
+params.UE_split = 0.1; %fraction in I_band
 params.BEAM = 0;
 %%
 params.ASD_VALUE = 0;%[0,0.25,0.5,0.75,1];  % [0,30,10]; %
 params.ASD_CORR = 0;
-params.Kt_Kr_vsUE  = 0; %0.175^2; %0.175^2; %[1,2,3,4];  %to save 1=AP 0.1,UE=0.1;  2=AP 0.1,UE=0.3;  3=AP 0.3,UE=0.1
-
 params.pilot_pow = 100;  % 0.1W   % UL pilot. power (W)
 params.noiseFigure = 9; % gue
 params.sigma_sf =4;    
@@ -69,8 +67,8 @@ params.num_antennas_per_gNB = 64;
 params.num_antennas_per_sc = 16;
 params.rho_tot = 10^(0.1*75)*(Band/1e8); 
 params.rho_tot_sc = 10^(0.1*55);
-params.CELL_REPEAT = 1;
-params.FWA_REPEAT = 1;
+params.CELL_REPEAT = 0;
+params.FWA_REPEAT = 0;
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -85,15 +83,18 @@ params.Lmax = 1;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
 params.loss_pc_FWA = 5/100;
-params.SI_cancel_factor = 10^(0.1*-5);
-rep_gain_arr = 20; % 10:10:70; %in dB %10^(0.1*(6.5+20*log10(params.fc/1e6)));
-num_rep_arr = 2; %1:1:5;
+params.SI_cancel_factor = 10^(0.1*0);
+params.HW_IMPAIRMENTS = 0;  % 1 = hardware impairments on, 0 = ideal hardware
+params.Kt = 0.99;            % transmitter impairment factor (1 = ideal)
+params.Kr = 0.99;            % receiver impairment factor (1 = ideal)
+rep_gain_arr = 10:10:70; %in dB %10^(0.1*(6.5+20*log10(params.fc/1e6)));
+num_rep_arr = 0:1:5;
 %Number of channel realizations per setup
 params.nbrOfRealizations = 10;
 
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
-r_min_arr = 1e6*(25:25:300);
+r_min_arr = 1e6*100;%(25:25:300);
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations
@@ -120,7 +121,6 @@ for idxBSDensity = 1:length(lambda_BS)
         % [gainOverNoisedB,gainOverNoisedB_cpe,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,aID);
         ASD_VALUE = params.ASD_VALUE;
         ASD_CORR = params.ASD_CORR;
-        Kt_Kr_vsUE = params.Kt_Kr_vsUE;
         K_Factor = params.K_Factor;
         RAYLEIGH=params.RAYLEIGH;   %1= rayleigh, % 0=rician
         Perf_CSI = params.Perf_CSI;
@@ -206,6 +206,8 @@ for idxBSDensity = 1:length(lambda_BS)
                     params.r_min_FWA = r_min_arr(idxrmin);
                     K_FWA_max = 0;
                     params.Band = Band_FWA;
+                    [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
+                    K_FWA_init = sum(FWA_util>0);
                     if (params.Band > 0)
                         while any(mean_rate_dl_FWA > params.r_max_FWA)
                             CPE_idxs = find(mean_rate_dl_FWA > params.r_max_FWA);
@@ -258,7 +260,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 
                     %Taking care of folder directory creation etc
                     dataFolder = 'resultData';
-                    rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_fixed_FWA_cf_fix_rep_num_gain_var_UE_density');
+                    rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_comp_alg');
                     if not(isfolder(dataFolder))
                         mkdir(dataFolder)
                     end
@@ -297,11 +299,11 @@ for idxBSDensity = 1:length(lambda_BS)
                     recording_text_file_string = strcat(rateFolder,result_string,'.csv');
                     fileID = fopen(recording_text_file_string,'w');
                     output_categories = ['lambdaBS,','lambdaSC,','numCPE,','lambdaUE,',...
-                    'deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','max_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
+                    'deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','init_FWA,','max_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
                     fprintf(fileID,output_categories);
-                    formatSpec = '%d,%d,%d,%d,%d,%f,%f,%d,%d,%d,%f,%f,%f,%f\n';
+                    formatSpec = '%d,%d,%d,%d,%d,%f,%f,%d,%d,%d,%d,%f,%f,%f,%f\n';
                     fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
-                    lambda_UE(idxUEDensity),deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_per_cpe,params.repeat_gain,K_FWA_max,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_max));
+                    lambda_UE(idxUEDensity),deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_per_cpe,params.repeat_gain,K_FWA_init,K_FWA_max,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_max));
                     fclose(fileID);
                 end
             end

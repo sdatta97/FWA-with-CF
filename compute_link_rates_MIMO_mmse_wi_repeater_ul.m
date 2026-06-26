@@ -19,6 +19,12 @@ BETA = params.BETA;
 BETA_interUE = params.BETA_interUE;
 rep_gain = params.repeat_gain;
 BETA = BETA.*D_FWA;
+if params.HW_IMPAIRMENTS
+    Kt = params.Kt;
+    Kr = params.Kr;
+else
+    Kt = 1; Kr = 1;
+end
 % D_sc = params.D_sc;
 % BETA_sc = params.BETA_sc;
 
@@ -271,9 +277,11 @@ end
 DS_FWA = zeros(K_FWA,N_CPE_FWA);
 MSI_FWA = zeros(K_FWA,N_CPE_FWA);
 MUI_FWA = zeros(K_FWA,N_CPE_FWA);
+HI_FWA = zeros(K_FWA,N_CPE_FWA);
 DS_Cell = zeros(K-K_FWA,N_UE);
 MSI_Cell = zeros(K-K_FWA,N_UE);
 MUI_Cell = zeros(K-K_FWA,N_UE);
+HI_Cell = zeros(K-K_FWA,N_UE);
 
 noise_FWA = abs(sqrt(0.5)*(randn(K_FWA,N_CPE_FWA) + 1j*randn(K_FWA,N_CPE_FWA))).^2;
 noise_Cell = abs(sqrt(0.5)*(randn(K-K_FWA,N_UE) + 1j*randn(K-K_FWA,N_UE))).^2;
@@ -285,46 +293,54 @@ rate_ul = zeros(K,1);
 for k = 1:K_FWA
     if ~ismember(k,params.set_repeat)
         for n = 1:N_CPE_FWA
-            DS_FWA(k,n) = (abs(D_FWA_FWA(k,k,n,n)))^2;
+            DS_FWA(k,n) = Kr*Kt*(abs(D_FWA_FWA(k,k,n,n)))^2;
+            HI_FWA(k,n) = HI_FWA(k,n) + (1-Kr*Kt)*(abs(D_FWA_FWA(k,k,n,n)))^2;
             for nn = 1:N_CPE_FWA
                 if (abs(D_FWA_FWA(k,k,nn,nn))<abs(D_FWA_FWA(k,k,n,n)))
-                    MSI_FWA(k,n) = MSI_FWA(k,n) + (abs(D_FWA_FWA(k,k,n,nn)))^2;
+                    MSI_FWA(k,n) = MSI_FWA(k,n) + Kr*Kt*(abs(D_FWA_FWA(k,k,n,nn)))^2;
+                    HI_FWA(k,n) = HI_FWA(k,n) + (1-Kr*Kt)*(abs(D_FWA_FWA(k,k,n,nn)))^2;
                 end
             end
             for q = 1:K_FWA
                 if (q~=k) && ~ismember(q,params.set_repeat)
-                  MUI_FWA(k,n) = MUI_FWA(k,n) + norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
+                  MUI_FWA(k,n) = MUI_FWA(k,n) + Kr*Kt*norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
+                  HI_FWA(k,n) = HI_FWA(k,n) + (1-Kr*Kt)*norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
                 end
             end
             for q = 1:K-K_FWA
-               MUI_FWA(k,n) = MUI_FWA(k,n) + norm(reshape(D_FWA_Cell(k,q,n,:),[1,N_UE]))^2;
+               MUI_FWA(k,n) = MUI_FWA(k,n) + Kr*Kt*norm(reshape(D_FWA_Cell(k,q,n,:),[1,N_UE]))^2;
+               HI_FWA(k,n) = HI_FWA(k,n) + (1-Kr*Kt)*norm(reshape(D_FWA_Cell(k,q,n,:),[1,N_UE]))^2;
             end
             snr_num_FWA(k,n) = DS_FWA(k,n);
-            snr_den_FWA(k,n) = MSI_FWA(k,n) + MUI_FWA(k,n) + noise_FWA(k,n);
+            snr_den_FWA(k,n) = MSI_FWA(k,n) + MUI_FWA(k,n) + HI_FWA(k,n) + noise_FWA(k,n);
             rate_ul(k) = rate_ul(k) + BW*TAU_FAC*log2(1+snr_num_FWA(k,n)/snr_den_FWA(k,n));
         end
     end
 end
 for k = 1:K-K_FWA
     for n = 1:N_UE
-        DS_Cell(k,n) = (abs(D_Cell_Cell(k,k,n,n)))^2;
+        DS_Cell(k,n) = Kr*Kt*(abs(D_Cell_Cell(k,k,n,n)))^2;
+        HI_Cell(k,n) = HI_Cell(k,n) + (1-Kr*Kt)*(abs(D_Cell_Cell(k,k,n,n)))^2;
         for nn = 1:N_UE
             if (abs(D_Cell_Cell(k,k,nn,nn))<abs(D_Cell_Cell(k,k,n,n)))
-                MSI_Cell(k,n) = MSI_Cell(k,n) + (abs(D_Cell_Cell(k,k,n,nn)))^2;
+                MSI_Cell(k,n) = MSI_Cell(k,n) + Kr*Kt*(abs(D_Cell_Cell(k,k,n,nn)))^2;
+                HI_Cell(k,n) = HI_Cell(k,n) + (1-Kr*Kt)*(abs(D_Cell_Cell(k,k,n,nn)))^2;
             end
         end
         for q = 1:K_FWA
             if ~ismember(q,params.set_repeat)
-                MUI_Cell(k,n) = MUI_Cell(k,n) + norm(reshape(D_Cell_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
+                MUI_Cell(k,n) = MUI_Cell(k,n) + Kr*Kt*norm(reshape(D_Cell_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
+                HI_Cell(k,n) = HI_Cell(k,n) + (1-Kr*Kt)*norm(reshape(D_Cell_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
             end
         end
         for q = 1:K-K_FWA
             if (q~=k)
-                MUI_Cell(k,n) = MUI_Cell(k,n) + norm(reshape(D_Cell_Cell(k,q,n,:),[1,N_UE]))^2;
+                MUI_Cell(k,n) = MUI_Cell(k,n) + Kr*Kt*norm(reshape(D_Cell_Cell(k,q,n,:),[1,N_UE]))^2;
+                HI_Cell(k,n) = HI_Cell(k,n) + (1-Kr*Kt)*norm(reshape(D_Cell_Cell(k,q,n,:),[1,N_UE]))^2;
             end
         end
         snr_num_Cell(k,n) = DS_Cell(k,n);
-        snr_den_Cell(k,n) = MSI_Cell(k,n) + MUI_Cell(k,n) + noise_Cell(k,n);
+        snr_den_Cell(k,n) = MSI_Cell(k,n) + MUI_Cell(k,n) + HI_Cell(k,n) + noise_Cell(k,n);
         rate_ul(k+K_FWA) = rate_ul(k+K_FWA) + BW*TAU_FAC*log2(1+snr_num_Cell(k,n)/snr_den_Cell(k,n));
     end
 end

@@ -20,6 +20,12 @@ BETA_interUE = params.BETA_interUE;
 rep_gain = params.repeat_gain;
 BETA_FWA = BETA(:,1:K_FWA).*D_FWA;
 BETA_cell = BETA(:,1+K_FWA:end).*D_cell;
+if params.HW_IMPAIRMENTS
+    Kt = params.Kt;
+    Kr = params.Kr;
+else
+    Kt = 1; Kr = 1;
+end
 P_idxs = cell(M,1);
 I_idxs = [];
 for m = 1:M
@@ -112,7 +118,8 @@ end
 %% Computing rates
 DS_dl = zeros(K-K_FWA,N_UE);
 MSI_dl = zeros(K-K_FWA,N_UE);
-MCI_dl = zeros(K-K_FWA,N_UE); 
+MCI_dl = zeros(K-K_FWA,N_UE);
+HI_dl = zeros(K-K_FWA,N_UE);
 noise_dl = abs(sqrt(0.5)*(randn(K-K_FWA,N_UE) + 1j*randn(K-K_FWA,N_UE))).^2;
 rate_dl = zeros(K-K_FWA,1);
 for k = 1:K-K_FWA
@@ -122,7 +129,9 @@ for k = 1:K-K_FWA
             rep_idx = Rep{k}(kk);
             eff_channel = eff_channel + reshape(channel_dl_FWA(Serv{k},rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);
         end
-        DS_dl(k,n) = p_d*abs(eff_channel'*eff_channel./norm(eff_channel))^2;
+        ds_base = p_d*abs(eff_channel'*eff_channel./norm(eff_channel))^2;
+        DS_dl(k,n) = Kr*Kt*ds_base;
+        HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*ds_base;
         for nn = 1:N_UE
             if (nn~=n)
                 nn_eff_channel = reshape(channel_dl(Serv{k},k,:,nn),N_BS,1);
@@ -131,7 +140,9 @@ for k = 1:K-K_FWA
                     nn_eff_channel = nn_eff_channel + reshape(channel_dl_FWA(Serv{k},rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,k+K_FWA,:,nn),[N_CPE_FWA,1]);
                 end
                 if (norm(nn_eff_channel,'fro') < norm(eff_channel,'fro'))
-                    MSI_dl(k,n) = p_d*abs(eff_channel'*nn_eff_channel./norm(nn_eff_channel))^2;
+                    msi_base = p_d*abs(eff_channel'*nn_eff_channel./norm(nn_eff_channel))^2;
+                    MSI_dl(k,n) = Kr*Kt*msi_base;
+                    HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*msi_base;
                 end
                 if ismember(k,I_idxs)
                     mci_eff_channel = reshape(channel_dl(NoServ{k},k,:,nn),N_BS,1);
@@ -139,22 +150,26 @@ for k = 1:K-K_FWA
                         rep_idx = Rep{k}(kk);
                         mci_eff_channel = mci_eff_channel + reshape(channel_dl_FWA(NoServ{k},rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,k+K_FWA,:,nn),[N_CPE_FWA,1]);
                     end
-                    MCI_dl(k,n) = p_d*abs(eff_channel'*mci_eff_channel./norm(mci_eff_channel))^2;
+                    mci_base = p_d*abs(eff_channel'*mci_eff_channel./norm(mci_eff_channel))^2;
+                    MCI_dl(k,n) = Kr*Kt*mci_base;
+                    HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*mci_base;
                 end
             end
         end
-        if ismember(k,I_idxs)   
+        if ismember(k,I_idxs)
             mci_eff_channel = reshape(channel_dl(NoServ{k},k,:,n),N_BS,1);
             for kk = 1:numel(Rep{k})
                 rep_idx = Rep{k}(kk);
                 mci_eff_channel = mci_eff_channel + reshape(channel_dl_FWA(NoServ{k},rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_gain*reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);
             end
-            MCI_dl(k,n) = MCI_dl(k,n) + p_d*abs(eff_channel'*mci_eff_channel./norm(mci_eff_channel))^2;
+            mci_base2 = p_d*abs(eff_channel'*mci_eff_channel./norm(mci_eff_channel))^2;
+            MCI_dl(k,n) = MCI_dl(k,n) + Kr*Kt*mci_base2;
+            HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*mci_base2;
         end
         if ismember(k,I_idxs)
-            rate_dl(k) = rate_dl(k) + I_band*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+            rate_dl(k) = rate_dl(k) + I_band*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
         else
-            rate_dl(k) = rate_dl(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+            rate_dl(k) = rate_dl(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
         end
     end
 end

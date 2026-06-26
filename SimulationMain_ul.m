@@ -88,7 +88,10 @@ params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
 params.loss_pc_FWA = 5/100;
 params.SI_cancel_factor = 10^(0.1*-5);
-rep_gain_arr = 20; %10:10:70; %in dB %10^(0.1*(6.5+20*log10(params.fc/1e6)));
+params.HW_IMPAIRMENTS = 0;  % 1 = hardware impairments on, 0 = ideal hardware
+params.Kt = 0.99;            % transmitter impairment factor (1 = ideal)
+params.Kr = 0.99;            % receiver impairment factor (1 = ideal)
+rep_gain_arr = 20; % 10:10:70; %in dB %10^(0.1*(6.5+20*log10(params.fc/1e6)));
 num_rep_arr = 2; %1:1:5;
 %Number of channel realizations per setup
 params.nbrOfRealizations = 10;
@@ -260,7 +263,7 @@ for idxBSDensity = 1:length(lambda_BS)
 
                     %Taking care of folder directory creation etc
                     dataFolder = 'resultData';
-                    rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_fixed_FWA_cf_fix_rep_num_gain_vary_UE_density_ul');
+                    rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_fixed_FWA_cf_fix_rep_num_gain_var_UE_density_ul');
                     if not(isfolder(dataFolder))
                         mkdir(dataFolder)
                     end
