@@ -71,8 +71,8 @@ params.rho_tot = 10^(0.1*75)*(Band/1e8);
 params.rho_tot_sc = 10^(0.1*55);
 params.rho_tot_ul = 10^(0.1*23);
 params.rho_tot_ul_cpe = 10^(0.1*29);
-params.CELL_REPEAT = 1;
-params.FWA_REPEAT = 1;
+params.CELL_REPEAT = 0;
+params.FWA_REPEAT = 0;
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -265,7 +265,7 @@ for idxBSDensity = 1:length(lambda_BS)
 
                     %Taking care of folder directory creation etc
                     dataFolder = 'resultData';
-                    rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_vary_num_rep_gain_ul');
+                    rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_vary_num_rep_gain_ul_no_rep');
                     if not(isfolder(dataFolder))
                         mkdir(dataFolder)
                     end
