@@ -21,13 +21,11 @@ if params.HW_IMPAIRMENTS
 else
     Kt = 1; Kr = 1;
 end
-P_idxs = zeros(M,K_P);
-if alpha > 0
-    [~,P_idxs(1,:)] = mink(BETA(1,:) + (BETA(1,:)<=0).*(1+max(BETA(1,:))),K_P);
-    [~,P_idxs(2,:)] = mink(BETA(2,:) + (BETA(2,:)<=0).*(1+max(BETA(2,:))),K_P);
-    I_idxs = [setdiff(find(D(1,:)),P_idxs(1,:)),setdiff(find(D(2,:)),P_idxs(2,:))];
-else
-    I_idxs = [];
+P_idxs = cell(M,1);
+I_idxs = [];
+for m = 1:M
+    P_idxs{m,1} = find(BETA(m,:));
+    I_idxs = [I_idxs,setdiff(find(D(m,:)),P_idxs{m,1})];
 end
 %Prepare cell to store the AP indices serving a specfic UE
 Serv = cell(K,1);
@@ -123,7 +121,11 @@ for k = 1:K-K_FWA
         if ismember(k,I_idxs)
             rate_ul(k) = rate_ul(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_ul(k,n)/(MSI_ul(k,n)+MCI_ul(k,n)+HI_ul(k,n)+noise_ul(k,n)));
         else
+<<<<<<< HEAD
             rate_ul(k) = rate_ul(k) + (P_band/(numel(P_idxs)/M))*TAU_FAC*log2(1+DS_ul(k,n)/(MSI_ul(k,n)+MCI_ul(k,n)+HI_ul(k,n)+noise_ul(k,n)));
+=======
+            rate_ul(k) = rate_ul(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_ul(k,n)/(MSI_ul(k,n)+MCI_ul(k,n)+noise_ul(k,n)));
+>>>>>>> 0eee83c2230aaf6f881290ee81494ec12bb01b5a
         end
     end
 end
