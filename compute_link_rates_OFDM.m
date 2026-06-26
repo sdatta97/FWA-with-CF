@@ -15,13 +15,11 @@ p_d = params.rho_tot; % 1*K;
 D = params.D;
 BETA = params.BETA;
 BETA = BETA.*D;
-P_idxs = zeros(M,K_P);
-if alpha > 0
-    [~,P_idxs(1,:)] = mink(BETA(1,:) + (BETA(1,:)<=0).*(1+max(BETA(1,:))),K_P);
-    [~,P_idxs(2,:)] = mink(BETA(2,:) + (BETA(2,:)<=0).*(1+max(BETA(2,:))),K_P);
-    I_idxs = [setdiff(find(D(1,:)),P_idxs(1,:)),setdiff(find(D(2,:)),P_idxs(2,:))];
-else
-    I_idxs = [];
+P_idxs = cell(M,1);
+I_idxs = [];
+for m = 1:M
+    P_idxs{m,1} = find(BETA(m,:));
+    I_idxs = [I_idxs,setdiff(find(D(m,:)),P_idxs{m,1})];
 end
 %Prepare cell to store the AP indices serving a specfic UE
 Serv = cell(K,1);
@@ -109,7 +107,7 @@ for k = 1:K-K_FWA
             if ismember(k,I_idxs)
                 rate_dl(k) = rate_dl(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
             else
-                rate_dl(k) = rate_dl(k) + (P_band/(numel(P_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+                rate_dl(k) = rate_dl(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
             end
         else
             DS_dl(k,n) = p_d*abs(reshape(channel_dl(Serv{k},k,:,n),N_BS,1)'*ones(N_BS,1)./sqrt(N_BS))^2;
@@ -123,13 +121,13 @@ for k = 1:K-K_FWA
                     end
                 end
             end
-            if ismember(k,I_idxs)       
+            if ismember(k,I_idxs)
                 MCI_dl(k,n) = MCI_dl(k,n) + p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*ones(N_BS,1)./sqrt(N_BS))^2;
             end
             if ismember(k,I_idxs)
                 rate_dl(k) = rate_dl(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
             else
-                rate_dl(k) = rate_dl(k) + (P_band/(numel(P_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
+                rate_dl(k) = rate_dl(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
             end
         end
     end
