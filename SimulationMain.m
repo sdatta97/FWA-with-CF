@@ -39,7 +39,7 @@ params.r_min_cell = 35e6;
 params.r_max_FWA = 1e9;
 %%
 params.CH_estimation = 0;  % 1= have channel estimation
-params.UE_split = 0.1; %fraction in I_band
+params.UE_split = 0; %fraction in I_band
 params.BEAM = 0;
 %%
 params.ASD_VALUE = 0;%[0,0.25,0.5,0.75,1];  % [0,30,10]; %
@@ -67,8 +67,8 @@ params.num_antennas_per_gNB = 64;
 params.num_antennas_per_sc = 16;
 params.rho_tot = 10^(0.1*75)*(Band/1e8); 
 params.rho_tot_sc = 10^(0.1*55);
-params.CELL_REPEAT = 0;
-params.FWA_REPEAT = 0;
+params.CELL_REPEAT = 1;
+params.FWA_REPEAT = 1;
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -78,17 +78,17 @@ params.ht_bs = 15;
 params.ht_sc = 5;
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 200:200:1000;
+lambda_UE = 1000; %200:200:1000;
 params.Lmax = 1;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
 params.loss_pc_FWA = 5/100;
 params.SI_cancel_factor = 10^(0.1*0);
-params.HW_IMPAIRMENTS = 0;  % 1 = hardware impairments on, 0 = ideal hardware
-params.Kt = 0.99;            % transmitter impairment factor (1 = ideal)
-params.Kr = 0.99;            % receiver impairment factor (1 = ideal)
-rep_gain_arr = 10:10:70; %in dB %10^(0.1*(6.5+20*log10(params.fc/1e6)));
-num_rep_arr = 0:1:5;
+params.HW_IMPAIRMENTS = 1;  % 1 = hardware impairments on, 0 = ideal hardware
+params.Kt = 0.9;            % transmitter impairment factor (1 = ideal)
+params.Kr = 0.9;            % receiver impairment factor (1 = ideal)
+rep_gain_arr = 10:10:50; %in dB %10^(0.1*(6.5+20*log10(params.fc/1e6)));
+num_rep_arr = 1:1:5;
 %Number of channel realizations per setup
 params.nbrOfRealizations = 10;
 
@@ -187,6 +187,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 params.BETA = db2pow(gainOverNoisedB(:,1:M*numCPE_all));   
                 params.D_cell = [];
                 params.D_FWA = D_FWA;
+                params.D = D_FWA;
                 CPE_idxs = 1:M*numCPE_all;
                 params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
                 params.R_cpe = R_cpe;
@@ -208,42 +209,42 @@ for idxBSDensity = 1:length(lambda_BS)
                     params.Band = Band_FWA;
                     [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
                     K_FWA_init = sum(FWA_util>0);
-                    if (params.Band > 0)
-                        while any(mean_rate_dl_FWA > params.r_max_FWA)
-                            CPE_idxs = find(mean_rate_dl_FWA > params.r_max_FWA);
-                            params.Band = params.Band*(1-(params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA))));
-                            rate_dl(CPE_idxs,:) = rate_dl(CPE_idxs,:)*params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA));
-                            mean_rate_dl_FWA(CPE_idxs) = mean(rate_dl(CPE_idxs,:),2);
-                            params.set_repeat = [params.set_repeat; CPE_idxs];
-                            not_set_repeat = setdiff(1:M*numCPE_all,params.set_repeat);
-                            for n = 1:nbrOfRealizations
-                                [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, ~, ~] = computePhysicalChannels_sub6_MIMO(params);
-                                rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
-                            end
-                            mean_rate_dl_FWA(not_set_repeat) = mean(rate_dl(not_set_repeat,:),2);
-                        end
-                        [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
-                        K_FWA_max = sum(FWA_util>0);
-                        REPEAT = params.FWA_REPEAT && (K_FWA_max < K_FWA);  
-                        if REPEAT
-                            CPE_idxs = setdiff(find(FWA_util>0),params.set_repeat);
-                            params.set_repeat = find(FWA_util>0);
-                            not_set_repeat = setdiff(1:M*numCPE_all,params.set_repeat);
-                            if (numel(CPE_idxs) > 0)
-                                current_min_rate = min(mean_rate_dl_FWA(CPE_idxs));
-                                rate_dl(union(CPE_idxs,not_set_repeat),:) = rate_dl(union(CPE_idxs,not_set_repeat),:)*params.r_min_FWA/current_min_rate;
-                                mean_rate_dl_FWA(union(CPE_idxs,not_set_repeat)) = mean(rate_dl(union(CPE_idxs,not_set_repeat),:),2);
-                                params.Band = params.Band*(1-(params.r_min_FWA/current_min_rate));
-                                for n = 1:nbrOfRealizations
-                                    [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);                        
-                                    rate_dl(:,n) = compute_link_rates_MIMO_mmse_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);                                          
-                                end
-                                mean_rate_dl_FWA(not_set_repeat) = mean_rate_dl_FWA(not_set_repeat) + mean(rate_dl(not_set_repeat,:),2);
-                                [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
-                                K_FWA_max = sum(FWA_util>0);
-                            end
-                        end
-                    end
+                    % if (params.Band > 0)
+                    %     while any(mean_rate_dl_FWA > params.r_max_FWA)
+                    %         CPE_idxs = find(mean_rate_dl_FWA > params.r_max_FWA);
+                    %         params.Band = params.Band*(1-(params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA))));
+                    %         rate_dl(CPE_idxs,:) = rate_dl(CPE_idxs,:)*params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA));
+                    %         mean_rate_dl_FWA(CPE_idxs) = mean(rate_dl(CPE_idxs,:),2);
+                    %         params.set_repeat = [params.set_repeat; CPE_idxs];
+                    %         not_set_repeat = setdiff(1:M*numCPE_all,params.set_repeat);
+                    %         for n = 1:nbrOfRealizations
+                    %             [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, ~, ~] = computePhysicalChannels_sub6_MIMO(params);
+                    %             rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
+                    %         end
+                    %         mean_rate_dl_FWA(not_set_repeat) = mean(rate_dl(not_set_repeat,:),2);
+                    %     end
+                    %     [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
+                    %     K_FWA_max = sum(FWA_util>0);
+                    %     REPEAT = params.FWA_REPEAT && (K_FWA_max < K_FWA);  
+                    %     if REPEAT
+                    %         CPE_idxs = setdiff(find(FWA_util>0),params.set_repeat);
+                    %         params.set_repeat = find(FWA_util>0);
+                    %         not_set_repeat = setdiff(1:M*numCPE_all,params.set_repeat);
+                    %         if (numel(CPE_idxs) > 0)
+                    %             current_min_rate = min(mean_rate_dl_FWA(CPE_idxs));
+                    %             rate_dl(union(CPE_idxs,not_set_repeat),:) = rate_dl(union(CPE_idxs,not_set_repeat),:)*params.r_min_FWA/current_min_rate;
+                    %             mean_rate_dl_FWA(union(CPE_idxs,not_set_repeat)) = mean(rate_dl(union(CPE_idxs,not_set_repeat),:),2);
+                    %             params.Band = params.Band*(1-(params.r_min_FWA/current_min_rate));
+                    %             for n = 1:nbrOfRealizations
+                    %                 [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);                        
+                    %                 rate_dl(:,n) = compute_link_rates_MIMO_mmse_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);                                          
+                    %             end
+                    %             mean_rate_dl_FWA(not_set_repeat) = mean_rate_dl_FWA(not_set_repeat) + mean(rate_dl(not_set_repeat,:),2);
+                    %             [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
+                    %             K_FWA_max = sum(FWA_util>0);
+                    %         end
+                    %     end
+                    % end
                     sum_FWA_rate = sum(mean_rate_dl_FWA);
                     params.CPE_locations = CPE_locations;
                     params.numCPE = M*numCPE_all;
@@ -260,7 +261,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 
                     %Taking care of folder directory creation etc
                     dataFolder = 'resultData';
-                    rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_comp_alg');
+                    rateFolder = strcat(dataFolder,'/FWA_multi_cell_repeater_comp_num_gain');
                     if not(isfolder(dataFolder))
                         mkdir(dataFolder)
                     end
@@ -296,14 +297,23 @@ for idxBSDensity = 1:length(lambda_BS)
                     %     'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
                     %     'lambdaUE_', num2str(deployRange),'deployRange_', ...
                     %     num2str(params.r_min_FWA/10^6),'min_FWA_rate', string(aID));
+                    % recording_text_file_string = strcat(rateFolder,result_string,'.csv');
+                    % fileID = fopen(recording_text_file_string,'w');
+                    % output_categories = ['lambdaBS,','lambdaSC,','numCPE,','lambdaUE,',...
+                    % 'deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','init_FWA,','max_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
+                    % fprintf(fileID,output_categories);
+                    % formatSpec = '%d,%d,%d,%d,%d,%f,%f,%d,%d,%d,%d,%f,%f,%f,%f\n';
+                    % fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
+                    % lambda_UE(idxUEDensity),deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_per_cpe,params.repeat_gain,K_FWA_init,K_FWA_max,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_max));
+                    % fclose(fileID);
                     recording_text_file_string = strcat(rateFolder,result_string,'.csv');
                     fileID = fopen(recording_text_file_string,'w');
                     output_categories = ['lambdaBS,','lambdaSC,','numCPE,','lambdaUE,',...
-                    'deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','init_FWA,','max_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
+                    'deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','init_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
                     fprintf(fileID,output_categories);
-                    formatSpec = '%d,%d,%d,%d,%d,%f,%f,%d,%d,%d,%d,%f,%f,%f,%f\n';
+                    formatSpec = '%d,%d,%d,%d,%d,%f,%f,%d,%d,%d,%f,%f,%f,%f\n';
                     fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
-                    lambda_UE(idxUEDensity),deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_per_cpe,params.repeat_gain,K_FWA_init,K_FWA_max,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_max));
+                    lambda_UE(idxUEDensity),deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_per_cpe,params.repeat_gain,K_FWA_init,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_init));
                     fclose(fileID);
                 end
             end

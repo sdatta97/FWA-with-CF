@@ -24,7 +24,8 @@ end
 P_idxs = cell(M,1);
 I_idxs = [];
 for m = 1:M
-    P_idxs{m,1} = find(BETA(m,:));
+    [~,P_idxs{m,1}] = maxk(BETA(m,:),K_P);
+    % P_idxs{m,1} = find(BETA(m,:));
     I_idxs = [I_idxs,setdiff(find(D(m,:)),P_idxs{m,1})];
 end
 %Prepare cell to store the AP indices serving a specfic UE
@@ -121,11 +122,7 @@ for k = 1:K-K_FWA
         if ismember(k,I_idxs)
             rate_ul(k) = rate_ul(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_ul(k,n)/(MSI_ul(k,n)+MCI_ul(k,n)+HI_ul(k,n)+noise_ul(k,n)));
         else
-<<<<<<< HEAD
-            rate_ul(k) = rate_ul(k) + (P_band/(numel(P_idxs)/M))*TAU_FAC*log2(1+DS_ul(k,n)/(MSI_ul(k,n)+MCI_ul(k,n)+HI_ul(k,n)+noise_ul(k,n)));
-=======
-            rate_ul(k) = rate_ul(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_ul(k,n)/(MSI_ul(k,n)+MCI_ul(k,n)+noise_ul(k,n)));
->>>>>>> 0eee83c2230aaf6f881290ee81494ec12bb01b5a
+            rate_ul(k) = rate_ul(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_ul(k,n)/(MSI_ul(k,n)+MCI_ul(k,n)+HI_ul(k,n)+noise_ul(k,n)));
         end
     end
 end

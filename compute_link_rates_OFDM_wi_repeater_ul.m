@@ -29,7 +29,8 @@ end
 P_idxs = cell(M,1);
 I_idxs = [];
 for m = 1:M
-    P_idxs{m,1} = find(BETA_cell(m,:));
+    [~,P_idxs{m,1}] = maxk(BETA_cell(m,:),K_P);
+    % P_idxs{m,1} = find(BETA_cell(m,:));
     % [~,P_idxs_tmp] = mink(BETA(m,K_FWA+non_zero_idxs),min(K_P/M,numel(non_zero_idxs)));
     I_idxs = [I_idxs,setdiff(find(D_cell(m,:)),P_idxs{m,1})];
 end

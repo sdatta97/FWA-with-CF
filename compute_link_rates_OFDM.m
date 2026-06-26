@@ -24,7 +24,8 @@ end
 P_idxs = cell(M,1);
 I_idxs = [];
 for m = 1:M
-    P_idxs{m,1} = find(BETA(m,:));
+    [~,P_idxs{m,1}] = maxk(BETA(m,:),K_P);
+    % P_idxs{m,1} = find(BETA(m,:));
     I_idxs = [I_idxs,setdiff(find(D(m,:)),P_idxs{m,1})];
 end
 %Prepare cell to store the AP indices serving a specfic UE
@@ -122,11 +123,7 @@ for k = 1:K-K_FWA
             if ismember(k,I_idxs)
                 rate_dl(k) = rate_dl(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
             else
-<<<<<<< HEAD
-                rate_dl(k) = rate_dl(k) + (P_band/(numel(P_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
-=======
-                rate_dl(k) = rate_dl(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
->>>>>>> 0eee83c2230aaf6f881290ee81494ec12bb01b5a
+                rate_dl(k) = rate_dl(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
             end
         else
             ds_base = p_d*abs(reshape(channel_dl(Serv{k},k,:,n),N_BS,1)'*ones(N_BS,1)./sqrt(N_BS))^2;
@@ -147,22 +144,14 @@ for k = 1:K-K_FWA
                 end
             end
             if ismember(k,I_idxs)
-<<<<<<< HEAD
                 mci_base2 = p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*ones(N_BS,1)./sqrt(N_BS))^2;
                 MCI_dl(k,n) = MCI_dl(k,n) + Kr*Kt*mci_base2;
                 HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*mci_base2;
-=======
-                MCI_dl(k,n) = MCI_dl(k,n) + p_d*abs((reshape(channel_dl(Serv{k},k,:,n),N_BS,1))'*ones(N_BS,1)./sqrt(N_BS))^2;
->>>>>>> 0eee83c2230aaf6f881290ee81494ec12bb01b5a
             end
             if ismember(k,I_idxs)
                 rate_dl(k) = rate_dl(k) + (I_band/(numel(I_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
             else
-<<<<<<< HEAD
-                rate_dl(k) = rate_dl(k) + (P_band/(numel(P_idxs)/M))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
-=======
-                rate_dl(k) = rate_dl(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+noise_dl(k,n)));
->>>>>>> 0eee83c2230aaf6f881290ee81494ec12bb01b5a
+                rate_dl(k) = rate_dl(k) + (P_band/numel(P_idxs(Serv{k},:)))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
             end
         end
     end
