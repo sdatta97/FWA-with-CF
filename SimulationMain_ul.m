@@ -209,6 +209,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 Band_FWA = params.Band;
                 for idxrmin = 1:length(r_min_arr)
                     params.r_min_FWA = r_min_arr(idxrmin);
+                    [cell_util, FWA_util] = computeUtility(params,mean_rate_ul_cell, mean_rate_ul_FWA);
                     K_FWA_init = sum(FWA_util>0);
                     K_FWA_max = 0;
                     params.Band = Band_FWA;
