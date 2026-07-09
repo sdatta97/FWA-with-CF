@@ -7,7 +7,6 @@ alpha = params.UE_split;
 I_band = alpha*BW;
 P_band = (1-alpha)*BW/M;
 K_P = floor((1-alpha)*params.numUE);
-K_I = K-K_FWA-M*K_P;
 TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
 N_UE = size(channel_dl,4);
@@ -25,14 +24,13 @@ P_idxs = cell(M,1);
 I_idxs = [];
 for m = 1:M
     [~,P_idxs{m,1}] = maxk(BETA(m,:),K_P);
-    % P_idxs{m,1} = find(BETA(m,:));
     I_idxs = [I_idxs,setdiff(find(D(m,:)),P_idxs{m,1})];
 end
 %Prepare cell to store the AP indices serving a specfic UE
 Serv = cell(K,1);
 %Prepare cell to store the AP indices not serving a specfic UE
 NoServ = cell(K,1);
-%Construc the above array and cells
+%Construct the above array and cells
 for k = 1:K
     servingBSs = find(D(:,k)==1);
     NoservingBSs = find(D(:,k)==0);
@@ -41,53 +39,6 @@ for k = 1:K
     NoServ{k} = NoservingBSs;
 end
 
-% %% initialization of c
-% D_Cell_Cell = zeros(K-K_FWA,K-K_FWA,N_UE,N_UE);
-% dl_mmse_precoder = zeros(size(channel_est_dl));
-% scaling_LP_mmse = zeros(M,K-K_FWA);
-% for m = 1:M
-%     for k = 1:K-K_FWA
-%         % inv_matrix = noiseVariance*eye(Ntx);
-%         inv_matrix = eye(N_BS);
-%         for q = 1:K-K_FWA
-%             if ismember(m,Serv{q+K_FWA})
-%                 inv_matrix = inv_matrix +  p_d*reshape(channel_dl(m,q,:,:),[N_BS,N_UE])*reshape(channel_dl(m,q,:,:),[N_BS,N_UE])';
-%             end
-%         end
-%         dl_mmse_precoder(m,k,:,:) = reshape(dl_mmse_precoder(m,k,:,:),[N_BS,N_UE]) + p_d*inv_matrix\(reshape(channel_dl(m,k,:,:),[N_BS,N_UE]));
-%         if ismember(m,Serv{k+K_FWA})
-%             scaling_LP_mmse(m,k+K_FWA) = scaling_LP_mmse(m,k+K_FWA) + norm(dl_mmse_precoder(m,k,:,:),'fro')^2;
-%         end
-%     end
-% end
-% for m = 1:M
-%     for k = 1:K-K_FWA
-%         if ismember(m,Serv{k+K_FWA})
-%             dl_mmse_precoder(m,k,:,:) = reshape(dl_mmse_precoder(m,k,:,:),[N_BS,N_UE])./sqrt(scaling_LP_mmse(m,k+K_FWA));
-%         end
-%     end
-% end
-% eta_eq = zeros(M,K-K_FWA);
-% for m = 1:M
-%     term = 0;
-%     for k = 1:K-K_FWA
-%         if ismember(m,Serv{k+K_FWA})
-%             term = term + trace(reshape(dl_mmse_precoder(m,k-K_FWA,:,:),[N_BS,N_UE])*reshape(dl_mmse_precoder(m,k-K_FWA,:,:),[N_BS,N_UE])');
-%         end
-%     end
-%     if (term > 0)
-%         eta_eq(m,:) = (1/term)*D(m,:);
-%     end
-% end
-% for k = 1:K-K_FWA
-%     for q = 1:K-K_FWA
-%         for m = 1:M
-%             if ismember(m,Serv{q+K_FWA})
-%                 D_Cell_Cell(k,q,:,:) = reshape(D_Cell_Cell(k,q,:,:),[N_UE,N_UE]) + sqrt(p_d*eta_eq(m,q+K_FWA))*reshape(channel_dl(m,k,:,:),[N_BS,N_UE])'*reshape(dl_mmse_precoder(m,q,:,:),[N_BS,N_UE]);
-%             end
-%         end
-%     end
-% end
 %% Computing rates
 DS_dl = zeros(K-K_FWA,N_UE);
 MSI_dl = zeros(K-K_FWA,N_UE);

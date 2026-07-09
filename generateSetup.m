@@ -1,54 +1,13 @@
-function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesUEs,isIndoor,hUT,O2IdB] = generateSetup(params,seed)
-%This function generates realizations of the simulation setup described in
-%Section 5.3.
-%
-%INPUT:
-%L               = Number of APs per setup
-%K               = Number of UEs in the network
-%N               = Number of antennas per AP
-%tau_p           = Number of orthogonal pilots
-%nbrOfSetups     = Number of setups with random UE and AP locations
-%seed            = Seed number of pseudorandom number generator
-%ASD_varphi      = Angular standard deviation in the local scattering model 
-%                  for the azimuth angle (in radians)
-%ASD_theta       = Angular standard deviation in the local scattering model
-%                  for the elevation angle (in radians)
-%
-%OUTPUT:
-%gainOverNoisedB = Matrix with dimension L x K x nbrOfSetups where
-%                  element (l,k) is the channel gain (normalized by the
-%                  noise variance) between AP l and UE k in setup n
-%R               = Matrix with dimension N x N x L x K x nbrOfSetups
-%                  where (:,:,l,k) is the spatial correlation matrix
-%                  between AP l and UE k in setup n, normalized by noise
-%pilotIndex      = Matrix with dimension K x nbrOfSetups containing the
-%                  pilots assigned to the UEs
-%D               = DCC matrix with dimension L x K x nbrOfSetups where (l,k)
-%                  is one if AP l serves UE k in setup n and zero otherwise
-%                  for cell-free setup
-%D_small         = DCC matrix with dimension L x K x nbrOfSetups where (l,k)
-%                  is one if AP l serves UE k in setup n and zero otherwise
-%                  for small-cell setup
-%APpositions     = Vector of length L with the AP locations, where the real
-%                  part is the horizontal position and the imaginary part
-%                  is the vertical position
-%UEpositions     = Vector of length K with UE positions, measured in the
-%                  same way as APpositions
-%distances       = Matrix with same dimension as gainOverNoisedB containing
-%                  the distances in meter between APs and UEs
-%
-%This Matlab function was developed to generate simulation results to:
-%
-%Ozlem Tugfe Demir, Emil Bjornson and Luca Sanguinetti (2021),
-%"Foundations of User-Centric Cell-Free Massive MIMO", 
-%Foundations and Trends in Signal Processing: Vol. 14: No. 3-4,
-%pp 162-472. DOI: 10.1561/2000000109
-%
-%This is version 1.0 (Last edited: 2021-01-31)
-%
-%License: This code is licensed under the GPLv2 license. If you in any way
-%use this code for research that results in publications, please cite our
-%monograph as described above.
+function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesUEs,isIndoor,hUT,O2IdB,repDonorGaindB] = generateSetup(params,seed)
+%Generates one realization of the SMa simulation setup: sectored BS
+%antenna gains (TR 38.901 Table 7.3-1), SMa pathloss / LOS probability /
+%O2I penetration (TR 38.901 Clause 7.4), correlated shadow fading,
+%spatial correlation matrices, repeater antenna gains, and the
+%sector-association matrices D_FWA / D_cell.
+%Adapted from the cell-free setup generator accompanying:
+%O. T. Demir, E. Bjornson, L. Sanguinetti, "Foundations of User-Centric
+%Cell-Free Massive MIMO", Foundations and Trends in Signal Processing,
+%2021. Original code licensed under GPLv2.
 M_sectors = size(params.locationsBS,1);
 K_FWA = params.numCPE;
 K = M_sectors*params.numUE+params.numCPE;
@@ -57,26 +16,18 @@ N = params.num_antennas_per_gNB;
 N_UE_FWA = params.N_UE_FWA;
 N_UE_cell = params.N_UE_cell;
 coverageRange_sub6 = params.coverageRange_sub6;
-% tau_p = params.tau_p;
-ASD_varphi = params.ASD_varphi;
-ASD_theta = params.ASD_theta;
 %% Define simulation setup
 
 %Set the seed number if it is specified other than zero
-% if (nargin>9)&&(seed>0)
 if (nargin>1)&&(seed>0)
     rng(seed)
 end
 
-% %Size of the coverage area (as a square with wrap-around)
-% squareLength = 1000; %meter
-
 %Communication bandwidth (Hz)
 B = params.Band;
-% B = params.scs_sub6;
 
 %Noise figure (in dB)
-noiseFigure = 7;
+noiseFigure = params.noiseFigure;
 
 %Compute noise power (in dBm)
 noiseVariancedBm = -174 + 10*log10(B) + noiseFigure;
@@ -124,9 +75,6 @@ sigma_P = 4.4;
 PL1_SMa = @(d3D) 20*log10(40*pi*d3D*fc_GHz/3) + min(0.03*h_bldg^1.72,10)*log10(d3D) ...
                  - min(0.044*h_bldg^1.72,14.77) + 0.002*log10(h_bldg)*d3D;
 
-%Define the antenna spacing (in number of wavelengths)
-antennaSpacing = 1/2; %Half wavelength distance
-
 %Prepare to save results
 gainOverNoisedB = zeros(M_sectors,K);
 gainOverNoisedB_ue = zeros(K,K);
@@ -143,7 +91,7 @@ pilotIndex = zeros(K,1);
 D_FWA = ones(M_sectors,K_FWA);
 D_cell = ones(M_sectors,K-K_FWA);
     
-%Random AP locations with uniform distribution
+%Sector BS positions (co-located per site) and user positions
 locationsBS = params.locationsBS;
 APpositions = locationsBS(:,1) + 1i*locationsBS(:,2);
 %Prepare to compute UE locations  
@@ -152,7 +100,6 @@ UE_locations = params.UE_locations;
 UEpositions = [CPE_locations; UE_locations];
 UEpositions = UEpositions(:,1) + 1i*UEpositions(:,2);
 %Compute alternative AP locations by using wrap around
-% wrapHorizontal = repmat([-squareLength 0 squareLength],[3 1]);
 wrapHorizontal = repmat([-coverageRange_sub6 0 coverageRange_sub6],[3 1]);
 wrapVertical = wrapHorizontal';
 wrapLocations = wrapHorizontal(:)' + 1i*wrapVertical(:)';
@@ -197,11 +144,19 @@ for k = K_FWA+1:K
     end
 end
 
+%Sectored antennas at the CPEs / network-controlled repeaters: every CPE
+%(each one is a potential repeater) carries S sector panels with the same
+%element pattern as the gNB sectors (Table 7.3-1), boresight at the
+%horizon, at a random installation azimuth. A link goes through the
+%best-pointing sector. Donor-side gains (CPE towards each sector BS) are
+%returned in repDonorGaindB; service-side gains (CPE towards each user)
+%are embedded in gainOverNoisedB_ue below.
+repOrientations = 360*rand(K_FWA,1); %installation azimuth per CPE (deg)
+repDonorGaindB = zeros(M_sectors,K_FWA);
+
 %Add UEs
 for k = 1:K
     
-    %Generate a random UE location in the area
-    % UEposition = (rand(1,1) + 1i*rand(1,1)) * squareLength;
     UEposition = UEpositions(k);
     %Compute 2D distances to all sector BSs (wrap-around aware)
     [distanceAPstoUE,whichpos] = min(abs(APpositionsWrapped - repmat(UEposition,size(APpositionsWrapped))),[],2);
@@ -221,6 +176,22 @@ for k = 1:K
         A_V = -min(12*((zenithToUE - tilt_zenith)/theta_3dB)^2, SLA_V);
         A_H = -min(12*(relAzimuth/phi_3dB)^2, A_max);
         sectorGaindB(l) = G_ant_max - min(-(A_V + A_H), A_max);
+    end
+    %Donor-side repeater antenna gain: CPE k reaches sector BS l through
+    %its best-pointing sector panel (boresight at the horizon)
+    if k <= K_FWA
+        for l = 1:M_sectors
+            azCPEtoBS = rad2deg(angle(APpositionsWrapped(l,whichpos(l)) - UEposition));
+            zenCPEtoBS = 90 - rad2deg(atan(distanceVertical/max(distanceAPstoUE(l),1))); %pointing up at the BS
+            bestGain = -Inf;
+            for s = 1:S
+                relAzimuth = mod(azCPEtoBS - (repOrientations(k) + (s-1)*360/S) + 180, 360) - 180;
+                A_V = -min(12*((zenCPEtoBS - 90)/theta_3dB)^2, SLA_V);
+                A_H = -min(12*(relAzimuth/phi_3dB)^2, A_max);
+                bestGain = max(bestGain, G_ant_max - min(-(A_V + A_H), A_max));
+            end
+            repDonorGaindB(l,k) = bestGain;
+        end
     end
     %LOS state per site (SMa LOS probability, Table 7.4.2-1), shared by
     %the co-located sectors of a site
@@ -327,72 +298,51 @@ for k = 1:K
 
     end
     shadowing_ue = meanvalues_ue + stdvalue_ue*randn(1,K);
-    % shadowing_ue = sigma_sf*randn(1,K);
+    %Service-side repeater antenna gain: transmitter CPE l reaches user k
+    %through its best-pointing sector panel (boresight at the horizon);
+    %non-CPE transmitters (rows K_FWA+1:K) stay omnidirectional
+    repServiceGaindB = zeros(K,1);
+    for l = 1:K_FWA
+        if l ~= k
+            azCPEtoUE = rad2deg(angle(UEposition - UEpositions(l)));
+            d2D_ue = abs(UEposition - UEpositions(l));
+            zenCPEtoUE = 90 + rad2deg(atan((hUT(l) - hUT(k))/max(d2D_ue,1)));
+            bestGain = -Inf;
+            for s = 1:S
+                relAzimuth = mod(azCPEtoUE - (repOrientations(l) + (s-1)*360/S) + 180, 360) - 180;
+                A_V = -min(12*((zenCPEtoUE - 90)/theta_3dB)^2, SLA_V);
+                A_H = -min(12*(relAzimuth/phi_3dB)^2, A_max);
+                bestGain = max(bestGain, G_ant_max - min(-(A_V + A_H), A_max));
+            end
+            repServiceGaindB(l) = bestGain;
+        end
+    end
     %Compute the channel gain divided by noise power; the O2I loss of an
     %indoor receiving UE also applies to its inter-UE links
-    gainOverNoisedB_ue(:,k) = constantTerm - alpha*log10(distancesUEs(:,k)) + shadowing_ue' - O2IdB(k) - noiseVariancedBm;
+    gainOverNoisedB_ue(:,k) = constantTerm - alpha*log10(distancesUEs(:,k)) + repServiceGaindB + shadowing_ue' - O2IdB(k) - noiseVariancedBm;
 
     % %Update shadowing correlation matrix and store realizations
     shadowCorrMatrix_ue(1:k-1,k) = newcolumn_ue;
     shadowCorrMatrix_ue(k,1:k-1) = newcolumn_ue';
     shadowCPErealizations_ue(k,:) = shadowing_ue;  
 
-    %Go through all CPEs
+    %Inter-UE spatial correlation (i.i.d. fading): scaled identities
     for l = 1:K_FWA
-        
-        %Compute nominal angle between UE k and AP l
-        angletoUE_varphi = angle(UEpositions(k)-UEpositions(l)); %azimuth angle
-        angletoUE_theta = 0;  %elevation angle
-        %Generate spatial correlation matrix using the local
-        %scattering model in (2.18) and Gaussian angular distribution
-        %by scaling the normalized matrices with the channel gain
-        if nargin>12
-            R_interue(:,:,l,k) = db2pow(gainOverNoisedB_ue(l,k))*functionRlocalscattering_mod(N_UE_FWA,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
-        else
-            R_interue(:,:,l,k) = db2pow(gainOverNoisedB_ue(l,k))*eye(N_UE_FWA);
-        end
+        R_interue(:,:,l,k) = db2pow(gainOverNoisedB_ue(l,k))*eye(N_UE_FWA);
     end
     
-    %Go through all APs
-    for l = 1:M_sectors       
-        %Compute nominal angle between UE k and AP l
-        angletoUE_varphi = angle(UEpositions(k)-APpositionsWrapped(l,whichpos(l))); %azimuth angle
-        angletoUE_theta = asin(distanceVertical/distances(l,k));  %elevation angle
-        %Generate spatial correlation matrix using the local
-        %scattering model in (2.18) and Gaussian angular distribution
-        %by scaling the normalized matrices with the channel gain
-        if nargin>12
-            R_gNB(:,:,l,k) = db2pow(gainOverNoisedB(l,k))*functionRlocalscattering_mod(N,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
-            if (k<=K_FWA)
-                R_cpe(:,:,l,k) = functionRlocalscattering_mod(N_UE_FWA,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
-            else
-                R_ue(:,:,l,k-K_FWA) = functionRlocalscattering_mod(N_UE_cell,angletoUE_varphi,angletoUE_theta,ASD_varphi,ASD_theta,antennaSpacing);
-            end
+    %BS-side spatial correlation (i.i.d. fading): scaled identities
+    for l = 1:M_sectors
+        R_gNB(:,:,l,k) = db2pow(gainOverNoisedB(l,k))*eye(N);
+        if (k<=K_FWA)
+            R_cpe(:,:,l,k) = eye(N_UE_FWA);
         else
-            R_gNB(:,:,l,k) = db2pow(gainOverNoisedB(l,k))*eye(N);  %If angular standard deviations are not specified, set i.i.d. fading
-            if (k<=K_FWA)
-                R_cpe(:,:,l,k) = eye(N_UE_FWA);
-            else
-                R_ue(:,:,l,k-K_FWA) = eye(N_UE_cell);
-            end
+            R_ue(:,:,l,k-K_FWA) = eye(N_UE_cell);
         end
     end
 end
 
 
-%Each AP serves the UE with the strongest channel condition on each of
-%the pilots in the cell-free setup
-%     for l = 1:L
-%         
-%         for t = 1:tau_p
-%             
-%             pilotUEs = find(t==pilotIndex(:));
-%             [~,UEindex] = max(gainOverNoisedB(l,pilotUEs));
-%             D(l,pilotUEs(UEindex)) = 1;
-%            
-%         end
-%         
-%     end
 
 %Sector association: gainOverNoisedB includes the sector antenna pattern
 %gain, so picking the strongest BS entries maps each CPE/UE to the
