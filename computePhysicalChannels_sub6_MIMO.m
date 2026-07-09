@@ -1,5 +1,5 @@
 function [phy_channel_ue, phy_channel_ue_est, phy_channel_FWA, phy_channel_FWA_est, phy_channel_interFWA, phy_channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params)
-M = params.numGNB;
+M = params.numGNB; %number of sector-cell BS entries (M_sectors in the main scripts)
 K = M*params.numUE+params.numCPE;
 K_FWA = params.numCPE;
 Ntx = params.num_antennas_per_gNB;
@@ -22,10 +22,16 @@ for m = 1:M
     end 
 end
 if params.MOBILE
+    %Channel aging factor per cellular UE (indoor and outdoor UEs move at
+    %different velocities); a scalar is replicated for backward compatibility
+    mob_rho = params.mob_rho;
+    if isscalar(mob_rho)
+        mob_rho = mob_rho*ones(K-K_FWA,1);
+    end
     for m = 1:M
         for k = 1:K-K_FWA
-            phy_channel_ue (m,k,:,:) = params.mob_rho*phy_channel_ue (m,k,:,:) + reshape(sqrt(1 - params.mob_rho^2)*sqrt(0.5)*sqrtm(R_gNB(:,:,m,k+K_FWA))*(randn(Ntx,N_cell) + 1i*randn(Ntx,N_cell))*sqrtm(R_ue(:,:,m,k)), [1,1,Ntx,N_cell]);        
-        end 
+            phy_channel_ue (m,k,:,:) = mob_rho(k)*phy_channel_ue (m,k,:,:) + reshape(sqrt(1 - mob_rho(k)^2)*sqrt(0.5)*sqrtm(R_gNB(:,:,m,k+K_FWA))*(randn(Ntx,N_cell) + 1i*randn(Ntx,N_cell))*sqrtm(R_ue(:,:,m,k)), [1,1,Ntx,N_cell]);
+        end
     end
 end
 for q = 1:K_FWA

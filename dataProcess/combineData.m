@@ -1,7 +1,7 @@
 %Taken from 
 % https://in.mathworks.com/matlabcentral/answers/
 %   538119-how-to-import-to-matlab-many-text-files-as-table-type
-projectdir = '/Users/sdatta/Desktop/FWA_data/FWA_multi_cell_repeater_fixed_FWA_cf_fix_rep_num_gain_var_UE_density';
+projectdir = '/Users/sdatta/Desktop/FWA_data/FWA_multi_cell_repeater_vary_num_rep_gain_ul_no_rep';
 % projectdir = '/Users/sdatta/FWA-with-CF/resultData/FWA_multi_cell_repeater_fixed';
 dinfo = dir(fullfile(projectdir, '*.csv'));   %use appropriate extension
 filenames = fullfile({dinfo.folder}, {dinfo.name});
@@ -42,5 +42,5 @@ end
 
 summaryTable  = groupsummary(combinedTable,changingVars,{'mean','std','median'});
 
-writetable(summaryTable,'./Band_var_fwa_multi_cell_50CPE_5lBS_varyUEdensity_rep.txt')
-writetable(summaryTable,'./Band_var_fwa_multi_cell_50CPE_5lBS_varyUEdensity_rep.csv')
+writetable(summaryTable,'./fwa_multi_cell_50CPE_5lBS_1000UEdensity_rep_comp_ul_no_rep.txt')
+writetable(summaryTable,'./fwa_multi_cell_50CPE_5lBS_1000UEdensity_rep_comp_ul_no_rep.csv')

@@ -1,4 +1,4 @@
-function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesUEs] = generateSetup(params,seed)
+function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesUEs,isIndoor,hUT,O2IdB] = generateSetup(params,seed)
 %This function generates realizations of the simulation setup described in
 %Section 5.3.
 %
@@ -49,9 +49,9 @@ function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotInd
 %License: This code is licensed under the GPLv2 license. If you in any way
 %use this code for research that results in publications, please cite our
 %monograph as described above.
-M = size(params.locationsBS,1);
+M_sectors = size(params.locationsBS,1);
 K_FWA = params.numCPE;
-K = M*params.numUE+params.numCPE;
+K = M_sectors*params.numUE+params.numCPE;
 Lmax = params.Lmax;
 N = params.num_antennas_per_gNB;
 N_UE_FWA = params.N_UE_FWA;
@@ -81,7 +81,9 @@ noiseFigure = 7;
 %Compute noise power (in dBm)
 noiseVariancedBm = -174 + 10*log10(B) + noiseFigure;
 
-%Pathloss parameters for the model in (5.42)
+%Pathloss parameters of the log-distance model in (5.42), used only for
+%the inter-UE (CPE repeater / UE-UE) links; BS-UT links use the SMa
+%models of TR 38.901 Clause 7.4 below
 alpha = 36.7;
 constantTerm = -30.5;
 
@@ -91,21 +93,55 @@ sigma_sf = 4;
 %Decorrelation distance of the shadow fading in (5.43)
 decorr = 9;
 
+%Sector antenna parameters (element pattern of 3GPP TR 38.901 Table 7.3-1)
+S = params.sectors_per_site;             %sectors per site (co-located BS entries)
+M_sites = M_sectors/S;
+boresights = params.sector_boresights;   %boresight azimuth of each BS entry (deg)
+tilt_zenith = params.tilt_zenith;        %mechanical downtilt, zenith convention (deg)
+theta_3dB = params.theta_3dB;
+phi_3dB = params.phi_3dB;
+SLA_V = params.SLA_V;
+A_max = params.A_max;
+G_ant_max = params.G_ant_max;
+
+%SMa propagation parameters (TR 38.901 Clause 7.4)
+c0 = 3e8;
+fc_GHz = params.fc/1e9;      %centre frequency (GHz); SMa PL valid for 0.5-37 GHz
+hBS = params.ht_bs;
+h_bldg = params.h_bldg;      %average building height h (m)
+W_street = params.W_street;  %average street width W (m)
+%LOS probability clutter parameters (Table 7.4.2-1, SMa row)
+d_clutter = 30;
+h_com = 20; h_res = 8; h_veg = 15;
+r_com = 0.02; r_res = 0.18; r_veg = params.r_vegetation;
+%O2I building penetration, low-loss residential model (Clause 7.4.3.1)
+L_glass = 2 + 0.2*fc_GHz;
+L_concrete = 5 + 4*fc_GHz;
+PL_tw = 5 - 10*log10(0.3*10^(-L_glass/10) + 0.7*10^(-L_concrete/10));
+sigma_P = 4.4;
+%SMa LOS pathloss below the breakpoint (Table 7.4.1-1); PL2 above the
+%breakpoint is PL1 evaluated at d_BP plus 40log10(d3D/d_BP)
+PL1_SMa = @(d3D) 20*log10(40*pi*d3D*fc_GHz/3) + min(0.03*h_bldg^1.72,10)*log10(d3D) ...
+                 - min(0.044*h_bldg^1.72,14.77) + 0.002*log10(h_bldg)*d3D;
+
 %Define the antenna spacing (in number of wavelengths)
 antennaSpacing = 1/2; %Half wavelength distance
 
 %Prepare to save results
-gainOverNoisedB = zeros(M,K);
+gainOverNoisedB = zeros(M_sectors,K);
 gainOverNoisedB_ue = zeros(K,K);
-R_gNB = zeros(N,N,M,K);
-R_cpe = zeros(N_UE_FWA,N_UE_FWA,M,K_FWA);
-R_interue = zeros(N_UE_FWA,N_UE_FWA,K,K);
-R_ue = zeros(N_UE_cell,N_UE_cell,M,K-K_FWA);
-distances = zeros(M,K);
+R_gNB = zeros(N,N,M_sectors,K);
+R_cpe = zeros(N_UE_FWA,N_UE_FWA,M_sectors,K_FWA);
+%Only CPEs (indices 1:K_FWA) act as inter-UE transmitters, so the third
+%dimension is K_FWA rather than K (a K x K allocation would waste GBs at
+%the SMa UE counts)
+R_interue = zeros(N_UE_FWA,N_UE_FWA,K_FWA,K);
+R_ue = zeros(N_UE_cell,N_UE_cell,M_sectors,K-K_FWA);
+distances = zeros(M_sectors,K);
 distancesUEs = zeros(K,K);
 pilotIndex = zeros(K,1);
-D_FWA = ones(M,K_FWA);
-D_cell = ones(M,K-K_FWA);
+D_FWA = ones(M_sectors,K_FWA);
+D_cell = ones(M_sectors,K-K_FWA);
     
 %Random AP locations with uniform distribution
 locationsBS = params.locationsBS;
@@ -120,30 +156,111 @@ UEpositions = UEpositions(:,1) + 1i*UEpositions(:,2);
 wrapHorizontal = repmat([-coverageRange_sub6 0 coverageRange_sub6],[3 1]);
 wrapVertical = wrapHorizontal';
 wrapLocations = wrapHorizontal(:)' + 1i*wrapVertical(:)';
-APpositionsWrapped = repmat(APpositions,[1 length(wrapLocations)]) + repmat(wrapLocations,[M 1]);
+APpositionsWrapped = repmat(APpositions,[1 length(wrapLocations)]) + repmat(wrapLocations,[M_sectors 1]);
 
-%Prepare to store shadowing correlation matrix
-shadowCorrMatrix = sigma_sf^2*ones(K,K);
-shadowAPrealizations = zeros(K,M);    
+%Prepare to store shadowing correlation matrix. The BS-side field is
+%normalized to unit variance and scaled per link by the SMa shadow
+%fading std (4/6 dB LOS below/above breakpoint, 8 dB NLOS)
+shadowCorrMatrix = ones(K,K);
+shadowAPrealizations = zeros(K,M_sectors);
 
 shadowCorrMatrix_ue = sigma_sf^2*ones(K,K);
-shadowCPErealizations_ue = zeros(K,K);  
+shadowCPErealizations_ue = zeros(K,K);
+
+%Indoor state, height, and O2I penetration loss of each user. CPEs are
+%outdoor-mounted at params.hr_cpe. Cellular UEs are indoors with
+%probability params.indoor_UT_ratio (Table 7.2-5), in residential
+%buildings with floor heights 1.5 or 4.5 m, and receive a UT-specific
+%O2I loss (low-loss residential model, Clause 7.4.3.1) applied to all
+%their links
+isIndoor = false(K,1);
+if isfield(params,'isIndoorUE') && ~isempty(params.isIndoorUE)
+    %Location-determined indoor state supplied by the caller: UEs inside
+    %the housing complex are indoors, UEs outside it are outdoors
+    isIndoor(K_FWA+1:K) = params.isIndoorUE;
+else
+    %Fall back to an i.i.d. draw with the Table 7.2-5 indoor UT ratio
+    isIndoor(K_FWA+1:K) = rand(K-K_FWA,1) < params.indoor_UT_ratio;
+end
+hUT = params.hr*ones(K,1);
+hUT(1:K_FWA) = params.hr_cpe;
+O2IdB = zeros(K,1);
+for k = K_FWA+1:K
+    if isIndoor(k)
+        if rand < 0.5
+            hUT(k) = 4.5;
+        else
+            hUT(k) = 1.5;
+        end
+        d2Din = min(10*rand, 10*rand); %residential depth: min of two U(0,10) m
+        O2IdB(k) = PL_tw + 0.5*d2Din + sigma_P*randn;
+    end
+end
+
 %Add UEs
 for k = 1:K
     
     %Generate a random UE location in the area
     % UEposition = (rand(1,1) + 1i*rand(1,1)) * squareLength;
-    UEposition = UEpositions(k);        
-    %Compute distances assuming that the APs are 10 m above the UEs
+    UEposition = UEpositions(k);
+    %Compute 2D distances to all sector BSs (wrap-around aware)
     [distanceAPstoUE,whichpos] = min(abs(APpositionsWrapped - repmat(UEposition,size(APpositionsWrapped))),[],2);
     %Height difference between an AP and a UE (in meters)
-    if (k <= K_FWA)
-        distanceVertical = params.ht_bs - params.hr_cpe;
-    else
-        distanceVertical = params.ht_bs - params.hr;
-    end
+    distanceVertical = params.ht_bs - hUT(k);
     distances(:,k) = sqrt(distanceVertical^2+distanceAPstoUE.^2);
     distancesUEs(:,k) = abs(UEpositions - UEposition);
+    %Sector antenna gain (dB) of each sector BS towards UE k, using the
+    %element radiation pattern of TR 38.901 Table 7.3-1
+    sectorGaindB = zeros(M_sectors,1);
+    for l = 1:M_sectors
+        %azimuth of UE k relative to sector boresight, wrapped to [-180,180]
+        azimuthToUE = rad2deg(angle(UEposition - APpositionsWrapped(l,whichpos(l))));
+        relAzimuth = mod(azimuthToUE - boresights(l) + 180, 360) - 180;
+        %zenith angle of the LOS direction at the BS (90 deg = horizon)
+        zenithToUE = 90 + rad2deg(atan(distanceVertical/max(distanceAPstoUE(l),1)));
+        A_V = -min(12*((zenithToUE - tilt_zenith)/theta_3dB)^2, SLA_V);
+        A_H = -min(12*(relAzimuth/phi_3dB)^2, A_max);
+        sectorGaindB(l) = G_ant_max - min(-(A_V + A_H), A_max);
+    end
+    %LOS state per site (SMa LOS probability, Table 7.4.2-1), shared by
+    %the co-located sectors of a site
+    LOSstate = false(M_sectors,1);
+    invk_sum = (-log(1-r_com)*(h_com - hUT(k)) - log(1-r_res)*max(h_res - hUT(k),0))/(d_clutter*(hBS - hUT(k)));
+    if r_veg > 0
+        invk_sum = invk_sum - log(1-r_veg)*(h_veg - hUT(k))/(d_clutter*(hBS - hUT(k)));
+    end
+    for s = 1:M_sites
+        d2D_site = distanceAPstoUE((s-1)*S+1); %identical for co-located sectors
+        if d2D_site <= 10
+            pLOS = 1;
+        else
+            pLOS = exp(-d2D_site*invk_sum);
+        end
+        LOSstate((s-1)*S+(1:S)) = rand < pLOS;
+    end
+    %SMa pathloss (Table 7.4.1-1) and per-link shadow fading std
+    PLdB = zeros(M_sectors,1);
+    sigmaSF = zeros(M_sectors,1);
+    dBP = 2*pi*hBS*hUT(k)*params.fc/c0; %breakpoint distance (note 5)
+    for l = 1:M_sectors
+        d2D = distanceAPstoUE(l);
+        d3D = distances(l,k);
+        if LOSstate(l)
+            if d2D < dBP
+                PLdB(l) = PL1_SMa(d3D);
+                sigmaSF(l) = 4;
+            else
+                PLdB(l) = PL1_SMa(dBP) + 40*log10(d3D/dBP);
+                sigmaSF(l) = 6;
+            end
+        else
+            PLdB(l) = 161.04 - 7.1*log10(W_street) + 7.5*log10(h_bldg) ...
+                - (24.37 - 3.7*(h_bldg/hBS)^2)*log10(hBS) ...
+                + (43.42 - 3.1*log10(hBS))*(log10(d3D) - 3) ...
+                + 20*log10(fc_GHz) - (3.2*(log10(11.75*hUT(k)))^2 - 4.97);
+            sigmaSF(l) = 8;
+        end
+    end
     %If this is not the first UE
     if k-1>0
         
@@ -159,25 +276,28 @@ for k = 1:K
         %UEs' shadow fading realization have already been generated.
         %This computation is based on Theorem 10.2 in "Fundamentals of
         %Statistical Signal Processing: Estimation Theory" by S. Kay
-        newcolumn = sigma_sf^2*2.^(-shortestDistances/decorr);
+        newcolumn = 2.^(-shortestDistances/decorr);
         term1 = newcolumn'/shadowCorrMatrix(1:k-1,1:k-1);
         meanvalues = term1*shadowAPrealizations(1:k-1,:);
-        stdvalue = sqrt(sigma_sf^2 - term1*newcolumn);
-        
+        stdvalue = sqrt(1 - term1*newcolumn);
+
     else %If this is the first UE
-        
+
         %Add the UE and begin to store shadow fading correlation values
         meanvalues = 0;
-        stdvalue = sigma_sf;
+        stdvalue = 1;
         newcolumn = [];
-        
+
     end
     
-    %Generate the shadow fading realizations
-    shadowing = meanvalues + stdvalue*randn(1,M);
-    
-    %Compute the channel gain divided by noise power
-    gainOverNoisedB(:,k) = constantTerm - alpha*log10(distances(:,k)) + shadowing' - noiseVariancedBm;
+    %Generate the normalized shadow fading realizations: one per site,
+    %shared by the co-located sectors of that site
+    shadowingSite = stdvalue*randn(1,M_sites);
+    shadowing = meanvalues + repelem(shadowingSite,1,S);
+
+    %Compute the channel gain divided by noise power: SMa pathloss,
+    %sector antenna gain, per-link scaled shadow fading, and O2I loss
+    gainOverNoisedB(:,k) = -PLdB + sectorGaindB + sigmaSF.*shadowing' - O2IdB(k) - noiseVariancedBm;
     
     %Update shadowing correlation matrix and store realizations
     shadowCorrMatrix(1:k-1,k) = newcolumn;
@@ -208,8 +328,9 @@ for k = 1:K
     end
     shadowing_ue = meanvalues_ue + stdvalue_ue*randn(1,K);
     % shadowing_ue = sigma_sf*randn(1,K);
-    %Compute the channel gain divided by noise power
-    gainOverNoisedB_ue(:,k) = constantTerm - alpha*log10(distancesUEs(:,k)) + shadowing_ue' - noiseVariancedBm;
+    %Compute the channel gain divided by noise power; the O2I loss of an
+    %indoor receiving UE also applies to its inter-UE links
+    gainOverNoisedB_ue(:,k) = constantTerm - alpha*log10(distancesUEs(:,k)) + shadowing_ue' - O2IdB(k) - noiseVariancedBm;
 
     % %Update shadowing correlation matrix and store realizations
     shadowCorrMatrix_ue(1:k-1,k) = newcolumn_ue;
@@ -233,7 +354,7 @@ for k = 1:K
     end
     
     %Go through all APs
-    for l = 1:M       
+    for l = 1:M_sectors       
         %Compute nominal angle between UE k and AP l
         angletoUE_varphi = angle(UEpositions(k)-APpositionsWrapped(l,whichpos(l))); %azimuth angle
         angletoUE_theta = asin(distanceVertical/distances(l,k));  %elevation angle
@@ -273,6 +394,9 @@ end
 %         
 %     end
 
+%Sector association: gainOverNoisedB includes the sector antenna pattern
+%gain, so picking the strongest BS entries maps each CPE/UE to the
+%sector(s) whose beam covers it
 for k = 1:K_FWA
     [~, idxs] = sort(gainOverNoisedB(:,k), 'descend');
     idxs_not_chosen = idxs((Lmax+1):end);

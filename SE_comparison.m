@@ -22,16 +22,17 @@ params.K_Factor = 9;         %dB -- %rician factor Ground UE  % if beta_gains=1
 params.RAYLEIGH=0;   %1= rayleigh, % 0=rician
 params.Perf_CSI =1;
 params.cov_area = 1; %0.25; % 4; %km
-%% Mobility params
+%% Mobility params (TR 38.901 Table 7.2-5)
 params.MOBILE = 1;
-params.ue_velocity = 11.176; %25 mph
+params.ue_velocity_outdoor = 40/3.6; %outdoor (in-car) UTs: 40 km/h
+params.ue_velocity_indoor = 3/3.6;   %indoor UTs: 3 km/h
 params.Ts = 1.67e-5; %10us
 params.fc = 3.7e9; %7.9 GHz FR3
 params.c = 3e8; %speed of light
 params.coherence_time = 1e-3;
 params.n_samples = floor(params.coherence_time/params.Ts);
-% params.mob_rho = (besselj(0,2*pi*params.Ts*params.ue_velocity*params.fc/params.c))^params.n_samples;
-params.mob_rho = besselj(0,2*pi*params.Ts*params.ue_velocity*params.fc/params.c);
+%params.mob_rho (one channel-aging factor per cellular UE) is set after
+%generateSetup, once the indoor/outdoor state of each UE is known
 %% Economics params
 params.price_cell_per_bit = 4;
 params.price_FWA_per_bit = 0.14;
@@ -60,26 +61,50 @@ params.UE_split = 0; %fraction in I_band
 params.BEAM = 0;
 
 numCPE_all = 50; %5:5:20;
-Band = 80e6;
+Band = 100e6;
 
 %Prepare to save simulation results
-%% Room Setup, UE placement, UE height
-params.deployRange = 200; %20:20:100;
-params.coverageRange_sub6 = 430;
+%% Suburban Macro (SMa) deployment, 3GPP TR 38.901 Table 7.2-5
+params.ISD = 1299; %inter-site distance (m); 1732 m also listed, ISDs of 1200-1800 m valid (note 2)
+params.deployRange = params.ISD/2; %cell radius (half ISD); sets the wrap-around span
+params.complexRadius = 200; %housing complex radius around each site (m): CPEs and the indoor
+                            %UEs live here; outdoor (in-car) UEs roam the rest of the cell
+params.coverageRange_sub6 = 2*params.deployRange + 30; %wrap-around square length
+params.min_dist_2D = 35; %minimum BS-UT 2D distance (m)
 params.num_antennas_per_gNB = 64;
 params.num_antennas_per_sc = 16;
-params.rho_tot = 10^(0.1*75)*(Band/1e8); 
+params.rho_tot = 10^(0.1*75)*(Band/1e8);
 params.rho_tot_sc = 10^(0.1*55);
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
-params.hr = 1;
-params.hr_cpe = 3;
-params.ht_bs = 15;
+params.hr = 1.5; %outdoor UT height (m)
+params.hr_cpe = 4.5; %CPE at top floor of 2-storey residential building (m)
+params.ht_bs = 35; %BS antenna height (m)
 params.ht_sc = 5;
+%% Sectored BS antennas: 3 sectors per site, element pattern per TR 38.901 Table 7.3-1
+params.sectors_per_site = 3;
+sector_offsets = [30; 150; 270]; %sector boresight azimuths within a site (deg)
+params.theta_3dB = 65; %vertical 3 dB beamwidth (deg)
+params.phi_3dB = 65; %horizontal 3 dB beamwidth (deg)
+params.SLA_V = 30; %side-lobe attenuation, vertical (dB)
+params.A_max = 30; %front-back attenuation (dB)
+params.G_ant_max = 8; %max element gain (dBi)
+%Mechanical downtilt in zenith-angle convention (90 deg = horizon), per
+%TR 38.901 SMa calibration: 92 deg for ISD = 1732 m, 95 deg for ISD = 1299 m
+if params.ISD <= 1500
+    params.tilt_zenith = 95;
+else
+    params.tilt_zenith = 92;
+end
+%% SMa propagation, TR 38.901 Clause 7.4 (pathloss, LOS probability, O2I)
+params.h_bldg = 10; %average building height h (m), SMa default
+params.W_street = 10; %average street width W (m), SMa default
+params.r_vegetation = 0.10; %vegetation clutter density: 0 none, 0.10 sparse, 0.20 dense
+params.indoor_UT_ratio = 0.8; %fraction of cellular UEs indoors (Table 7.2-5)
 lambda_BS = 5; %([5 6 7 8 9 10]).^2;
 lambda_SC = 0; %([5 6 7 8 9 10]).^2;
-lambda_UE = 200:200:1000;
+lambda_UE = 200:200:1000; %combined UE density (per km^2) over the entire cell area
 params.Lmax = 1;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100;
@@ -92,34 +117,69 @@ params.set_repeat = [];
 params.num_repeater_per_cpe = 2;
 params.CELL_REPEAT = 0;
 params.FWA_REPEAT = 0;
+params.HW_IMPAIRMENTS = 1;  % 1 = hardware impairments on, 0 = ideal hardware
+params.Kt = 0.9;            % transmitter impairment factor (1 = ideal)
+params.Kr = 0.9;            % receiver impairment factor (1 = ideal)
 SI_cancel_arr = -20:5:0; %SI cancel factor in dB
 %% UE angular coverage range (full 360 coverage for now)
 lookAngleCell{1} = [0,360];
 r_min_arr = 1e6*(25:25:300);
 %% Simulation FR1 setup 
 for idxBSDensity = 1:length(lambda_BS)
-    %% gNB locations
-    params.numGNB = 2; %ceil(lambda_BS(idxBSDensity)*pi*(params.deployRange/1000)^2);
-    M = params.numGNB;
-    params.RgNB = [0; 2*params.deployRange]; %params.deployRange*sqrt(rand(params.numGNB,1));
-    params.angleGNB = 2*pi*rand(params.numGNB,1);
-    params.locationsBS = [params.RgNB.*cos(params.angleGNB), params.RgNB.*sin(params.angleGNB)];
-    %% CPE locations
-    RCPE =  params.deployRange*sqrt(rand(M*numCPE_all,1)); %location of UEs (distance from origin)
-    angleCPE = 2*pi*rand(M*numCPE_all,1);%location of UEs (angle from x-axis)
-    CPE_locations = [(params.locationsBS(1,:) + [RCPE(1:numCPE_all).*cos(angleCPE(1:numCPE_all)), RCPE(1:numCPE_all).*sin(angleCPE(1:numCPE_all))]); (params.locationsBS(2,:) + [RCPE(1+numCPE_all:end).*cos(angleCPE(1+numCPE_all:end)), RCPE(1+numCPE_all:end).*sin(angleCPE(1+numCPE_all:end))])];
+    %% gNB locations: macro sites, each split into 3 co-located sector BSs
+    params.M_sites = 2; %number of macro sites
+    M_sites = params.M_sites;
+    S = params.sectors_per_site;
+    params.numGNB = M_sites*S; %each sector is an independent BS entry
+    M_sectors = params.numGNB;
+    Rsite = [0; params.ISD]; %site distances from origin (adjacent sites at ISD)
+    angleSite = 2*pi*rand(M_sites,1);
+    siteLocations = [Rsite.*cos(angleSite), Rsite.*sin(angleSite)];
+    params.siteLocations = siteLocations;
+    params.locationsBS = kron(siteLocations, ones(S,1)); %sectors co-located at their site
+    params.sector_boresights = repmat(sector_offsets, M_sites, 1); %boresight azimuth per BS entry (deg)
+    %% CPE locations: numCPE_all per site, uniform in the housing complex
+    %annulus [min_dist_2D, complexRadius] around each site
+    numCPE_tot = M_sites*numCPE_all;
+    RCPE = sqrt(params.min_dist_2D^2 + (params.complexRadius^2 - params.min_dist_2D^2)*rand(numCPE_tot,1));
+    angleCPE = 2*pi*rand(numCPE_tot,1);
+    CPE_locations = kron(siteLocations, ones(numCPE_all,1)) + [RCPE.*cos(angleCPE), RCPE.*sin(angleCPE)];
     for idxUEDensity = 1:length(lambda_UE)
-        %% UE locations
-        params.numUE = ceil(lambda_UE(idxUEDensity)*pi*(params.deployRange/1000)^2/3);
+        %% UE locations: two-density model over the entire cell area.
+        %A fraction indoor_UT_ratio (80%, Table 7.2-5) of the UEs lies in
+        %the housing complex annulus [min_dist_2D, complexRadius] and is
+        %indoors; the rest lies in the outer ring [complexRadius,
+        %deployRange] and is outdoors (in-car). The combined density over
+        %the cell is lambda_UE per km^2
+        A_cell = pi*(params.deployRange/1000)^2; %cell area (km^2)
+        numUE_in = ceil(params.indoor_UT_ratio*lambda_UE(idxUEDensity)*A_cell/3); %per sector, in complex
+        numUE_out = ceil((1-params.indoor_UT_ratio)*lambda_UE(idxUEDensity)*A_cell/3); %per sector, outside
+        params.numUE = numUE_in + numUE_out;
         numUE = params.numUE;
-        RUE = params.deployRange*sqrt(rand(M*numUE,1)); %location of UEs (distance from origin)
-        angleUE = 2*pi*rand(M*numUE,1);%location of UEs (angle from x-axis)
-        params.UE_locations = [(params.locationsBS(1,:) + [RUE(1:numUE).*cos(angleUE(1:numUE)), RUE(1:numUE).*sin(angleUE(1:numUE))]); (params.locationsBS(2,:) + [RUE(1+numUE:end).*cos(angleUE(1+numUE:end)), RUE(1+numUE:end).*sin(angleUE(1+numUE:end))])];
-        params.numCPE = M*numCPE_all;
+        UE_locations = zeros(M_sectors*numUE,2);
+        isIndoorUE = false(M_sectors*numUE,1);
+        for idxSite = 1:M_sites
+            Nin = S*numUE_in;
+            Nout = S*numUE_out;
+            Rin = sqrt(params.min_dist_2D^2 + (params.complexRadius^2 - params.min_dist_2D^2)*rand(Nin,1));
+            Rout = sqrt(params.complexRadius^2 + (params.deployRange^2 - params.complexRadius^2)*rand(Nout,1));
+            angleUE = 2*pi*rand(Nin+Nout,1);
+            RUE = [Rin; Rout];
+            base = (idxSite-1)*(Nin+Nout);
+            UE_locations(base+(1:Nin+Nout),:) = siteLocations(idxSite,:) + [RUE.*cos(angleUE), RUE.*sin(angleUE)];
+            isIndoorUE(base+(1:Nin)) = true;
+        end
+        params.UE_locations = UE_locations;
+        params.isIndoorUE = isIndoorUE;
+        params.numCPE = numCPE_tot;
         params.CPE_locations = CPE_locations;
         params.Band = Band; %Communication bandwidth
-        [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs] = generateSetup(params,str2double(aID));
-        % [gainOverNoisedB,R_gNB,R_cpe,R_ue,pilotIndex,D,D_small,APpositions,UEpositions,distances] = generateSetup(params,aID);
+        [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs,isIndoor,hUT,O2IdB] = generateSetup(params,str2double(aID));
+        %Per-UE channel aging factor: indoor UEs move at 3 km/h, outdoor
+        %UEs at 40 km/h (TR 38.901 Table 7.2-5)
+        v_ue = params.ue_velocity_outdoor*ones(M_sectors*numUE,1);
+        v_ue(isIndoor(numCPE_tot+1:end)) = params.ue_velocity_indoor;
+        params.mob_rho = besselj(0,2*pi*params.Ts*v_ue*params.fc/params.c);
         ASD_VALUE = params.ASD_VALUE;
         ASD_CORR = params.ASD_CORR;
         Kt_Kr_vsUE = params.Kt_Kr_vsUE;
@@ -134,10 +194,10 @@ for idxBSDensity = 1:length(lambda_BS)
         params.numCPE = 0;
         params.CPE_locations = [];
         K_FWA = params.numCPE;
-        K = params.numCPE + M*params.numUE; 
-        params.BETA = db2pow(gainOverNoisedB(:,1+M*numCPE_all:end));   
+        K = params.numCPE + M_sectors*params.numUE; 
+        params.BETA = db2pow(gainOverNoisedB(:,1+numCPE_tot:end));   
         params.D = D_cell;
-        params.R_gNB = R_gNB(:,:,:,1+M*numCPE_all:end);
+        params.R_gNB = R_gNB(:,:,:,1+numCPE_tot:end);
         params.R_cpe = [];
         params.R_interue = [];
         params.R_ue = R_ue; 
@@ -152,15 +212,15 @@ for idxBSDensity = 1:length(lambda_BS)
         for idxSI = 1:length(SI_cancel_arr)
             params.SI_cancel_factor = 10^(0.1*SI_cancel_arr(idxSI)); %inter-BS interference cancellation factor
             params.numUE = 0;
-            params.numCPE = M*numCPE_all;
+            params.numCPE = numCPE_tot;
             K_FWA = params.numCPE;
-            K = params.numCPE + M*params.numUE; 
+            K = params.numCPE + M_sectors*params.numUE; 
             params.CPE_locations = CPE_locations;
-            params.BETA = db2pow(gainOverNoisedB(:,1:M*numCPE_all));   
+            params.BETA = db2pow(gainOverNoisedB(:,1:numCPE_tot));   
             params.D = D_FWA;
-            params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
+            params.R_gNB = R_gNB(:,:,:,1:numCPE_tot);
             params.R_cpe = R_cpe;
-            params.R_interue = R_interue(:,:,1:M*numCPE_all,1:M*numCPE_all);
+            params.R_interue = R_interue(:,:,1:numCPE_tot,1:numCPE_tot);
             params.R_ue = []; 
             rate_dl = zeros(K,nbrOfRealizations);
             for n = 1:nbrOfRealizations
@@ -209,10 +269,10 @@ for idxBSDensity = 1:length(lambda_BS)
             %         params.Band = params.Band*(1-params.r_min_FWA/min(mean_rate_dl_FWA));
             %     end
             %     params.CPE_locations = CPE_locations;
-            %     params.numCPE = M*numCPE_all;
-            %     params.R_gNB = R_gNB(:,:,:,1:M*numCPE_all);
+            %     params.numCPE = numCPE_tot;
+            %     params.R_gNB = R_gNB(:,:,:,1:numCPE_tot);
             %     params.R_cpe = R_cpe;
-            %     params.R_interue = R_interue(:,:,1:M*numCPE_all,1:M*numCPE_all);
+            %     params.R_interue = R_interue(:,:,1:numCPE_tot,1:numCPE_tot);
             %     params.R_ue = []; 
             %     params.D = D_FWA;
             %     mean_rate_dl_FWA = save_old_mean_FWA;
