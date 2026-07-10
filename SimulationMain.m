@@ -55,6 +55,9 @@ params.num_antennas_per_gNB = 64;
 params.rho_tot = 10^(0.1*49); %BS Tx power 49 dBm per sector, per the SMa calibration
                               %assumptions of TR 38.901 clause 7.8 (ETSI TR 138 901 V19.2.0)
 params.CELL_REPEAT = 1;
+params.TEMPORAL_MOBILITY = 0; %1 = evolve UE positions/large-scale state across
+                              %snapshots (used by PackingAnalysis.m); this script
+                              %draws one static setup per seed, so this stays off
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -99,8 +102,18 @@ lambda_UE_road_arr = 4;  %2:2:20;    %active in-car UEs per km^2, roads outside 
 params.Lmax = 1;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
-SI_cancel_arr = 0; %-20:5:0; %SI cancellation factor sweep (dB) for the FWA phase;
-                   %set to -20:5:0 to reproduce the retired SE_comparison.m experiment
+%FWA multi-user/inter-cell interference suppression factor gamma_I (dB):
+%residual interference power after beam nulling by the stationary,
+%large-array FWA CPEs. Justified values: commercial ngFWA radios cancel
+%interference by up to 45 dB (Tarana G1,
+%https://taranawireless.com/principles-of-ngfwa-design-interference-cancellation/;
+%ngFWA primer, https://resourcesapi.taranawireless.com/storage/resource_files/white-papers/1758649242_Tarana-ngFWA-Primer-White-Paper-2509-02.pdf)
+%and real-time adaptive arrays measure ~30-35 dB null depths, still
+%>20 dB with 3-6 simultaneous interferers (Sensors 2023,
+%https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10386719/). The -20 dB
+%default is conservative against both; sweep -20:5:0 for the
+%suppression-factor SE comparison figure
+SI_cancel_arr = -20; %-20:5:0;
 params.HW_IMPAIRMENTS = 1;  % 1 = hardware impairments on, 0 = ideal hardware
 %EVM-based impairment factors: an error vector magnitude of e turns a
 %fraction e^2 of the signal power into distortion, so K = 1 - e^2.

@@ -1,4 +1,4 @@
-function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesUEs,isIndoor,hUT,O2IdB,repDonorGaindB] = generateSetup(params,seed)
+function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesUEs,isIndoor,hUT,O2IdB,repDonorGaindB,mobState] = generateSetup(params,seed,mobState)
 %Generates one realization of the SMa simulation setup: sectored BS
 %antenna gains (TR 38.901 Table 7.3-1), SMa pathloss / LOS probability /
 %O2I penetration (TR 38.901 Clause 7.4), correlated shadow fading,
@@ -18,8 +18,22 @@ N_UE_cell = params.N_UE_cell;
 coverageRange_sub6 = params.coverageRange_sub6;
 %% Define simulation setup
 
+%Temporal mobility mode: gated by params.TEMPORAL_MOBILITY (explicit,
+%caller-visible flag) AND the presence of a mobState from a previous
+%snapshot. When both hold, the latent large-scale variables (shadow
+%fading, LOS states, O2I losses, indoor floor heights, repeater panel
+%orientations) are EVOLVED consistently with each user's displacement
+%instead of being redrawn, following the spatial-consistency intent of
+%TR 38.901 Clause 7.6.3. Stationary users (the FWA CPEs, zero
+%displacement) keep their values exactly; the caller owns the RNG stream
+%across snapshots. With the flag off (the default, e.g. SimulationMain.m)
+%every call behaves exactly as before this feature was added, regardless
+%of what is passed as mobState.
+evolveMode = isfield(params,'TEMPORAL_MOBILITY') && params.TEMPORAL_MOBILITY ...
+    && (nargin > 2) && ~isempty(mobState);
+
 %Set the seed number if it is specified other than zero
-if (nargin>1)&&(seed>0)
+if (nargin>1)&&(seed>0)&&(~evolveMode)
     rng(seed)
 end
 
@@ -43,6 +57,11 @@ sigma_sf = 4;
 
 %Decorrelation distance of the shadow fading in (5.43)
 decorr = 9;
+
+%LOS-state correlation distance (m) for temporal evolution, per the
+%spatial-consistency procedure of TR 38.901 Clause 7.6.3 (Table
+%7.6.3.1-2, macro-scenario LOS state)
+d_LOS = 50;
 
 %Sector antenna parameters (element pattern of 3GPP TR 38.901 Table 7.3-1)
 S = params.sectors_per_site;             %sectors per site (co-located BS entries)
@@ -99,6 +118,14 @@ CPE_locations = params.CPE_locations;
 UE_locations = params.UE_locations;
 UEpositions = [CPE_locations; UE_locations];
 UEpositions = UEpositions(:,1) + 1i*UEpositions(:,2);
+if evolveMode
+    %per-user displacement since the previous snapshot: drives the
+    %temporal correlation of every latent large-scale variable
+    deltaD = abs(UEpositions - mobState.UEpositions);
+end
+%per-site latent stores returned in mobState for the next snapshot
+shadowSiteStore = zeros(K,M_sites);
+LOSsiteStore = false(M_sites,K);
 %Compute alternative AP locations by using wrap around
 wrapHorizontal = repmat([-coverageRange_sub6 0 coverageRange_sub6],[3 1]);
 wrapVertical = wrapHorizontal';
@@ -129,18 +156,25 @@ else
     %Fall back to an i.i.d. draw with the Table 7.2-5 indoor UT ratio
     isIndoor(K_FWA+1:K) = rand(K-K_FWA,1) < params.indoor_UT_ratio;
 end
-hUT = params.hr*ones(K,1);
-hUT(1:K_FWA) = params.hr_cpe;
-O2IdB = zeros(K,1);
-for k = K_FWA+1:K
-    if isIndoor(k)
-        if rand < 0.5
-            hUT(k) = 4.5;
-        else
-            hUT(k) = 1.5;
+if evolveMode
+    %indoor users stay inside the same building while walking: floor
+    %height and O2I penetration loss are fixed across snapshots
+    hUT = mobState.hUT;
+    O2IdB = mobState.O2IdB;
+else
+    hUT = params.hr*ones(K,1);
+    hUT(1:K_FWA) = params.hr_cpe;
+    O2IdB = zeros(K,1);
+    for k = K_FWA+1:K
+        if isIndoor(k)
+            if rand < 0.5
+                hUT(k) = 4.5;
+            else
+                hUT(k) = 1.5;
+            end
+            d2Din = min(10*rand, 10*rand); %residential depth: min of two U(0,10) m
+            O2IdB(k) = PL_tw + 0.5*d2Din + sigma_P*randn;
         end
-        d2Din = min(10*rand, 10*rand); %residential depth: min of two U(0,10) m
-        O2IdB(k) = PL_tw + 0.5*d2Din + sigma_P*randn;
     end
 end
 
@@ -151,7 +185,11 @@ end
 %best-pointing sector. Donor-side gains (CPE towards each sector BS) are
 %returned in repDonorGaindB; service-side gains (CPE towards each user)
 %are embedded in gainOverNoisedB_ue below.
-repOrientations = 360*rand(K_FWA,1); %installation azimuth per CPE (deg)
+if evolveMode
+    repOrientations = mobState.repOrientations; %fixed CPE hardware installation
+else
+    repOrientations = 360*rand(K_FWA,1); %installation azimuth per CPE (deg)
+end
 repDonorGaindB = zeros(M_sectors,K_FWA);
 
 %Add UEs
@@ -191,8 +229,14 @@ for k = 1:K
         else
             pLOS = exp(-d2D_site*invk_sum);
         end
-        LOSstate((s-1)*S+(1:S)) = rand < pLOS;
+        if evolveMode && rand >= min(deltaD(k)/d_LOS,1)
+            %sticky LOS state within the correlation distance d_LOS
+            LOSstate((s-1)*S+(1:S)) = mobState.LOSstate(s,k);
+        else
+            LOSstate((s-1)*S+(1:S)) = rand < pLOS;
+        end
     end
+    LOSsiteStore(:,k) = LOSstate(1:S:M_sectors);
     %SMa pathloss (Table 7.4.1-1) and per-link shadow fading std
     PLdB = zeros(M_sectors,1);
     sigmaSF = zeros(M_sectors,1);
@@ -216,6 +260,17 @@ for k = 1:K
             sigmaSF(l) = 8;
         end
     end
+    if evolveMode
+        %AR(1) evolution of the per-site normalized shadow fading using
+        %the same spatial correlation function applied across users,
+        %2^(-d/decorr): exact along each user's own trajectory (a
+        %stationary user keeps its value); the cross-user correlation is
+        %inherited from the initial snapshot
+        a_sf = 2^(-deltaD(k)/decorr);
+        shadowingSite = a_sf*mobState.shadowSite(k,:) + sqrt(1-a_sf^2)*randn(1,M_sites);
+        shadowing = repelem(shadowingSite,1,S);
+        newcolumn = [];
+    else
     %If this is not the first UE
     if k-1>0
         
@@ -249,6 +304,8 @@ for k = 1:K
     %shared by the co-located sectors of that site
     shadowingSite = stdvalue*randn(1,M_sites);
     shadowing = meanvalues + repelem(shadowingSite,1,S);
+    end
+    shadowSiteStore(k,:) = shadowing(1:S:M_sectors);
 
     %Compute the channel gain divided by noise power: SMa pathloss,
     %sector antenna gain, per-link scaled shadow fading, and O2I loss
@@ -276,12 +333,22 @@ for k = 1:K
     end
     
     %Update shadowing correlation matrix and store realizations
-    shadowCorrMatrix(1:k-1,k) = newcolumn;
-    shadowCorrMatrix(k,1:k-1) = newcolumn';
+    if ~evolveMode
+        shadowCorrMatrix(1:k-1,k) = newcolumn;
+        shadowCorrMatrix(k,1:k-1) = newcolumn';
+    end
     shadowAPrealizations(k,:) = shadowing;
     
     %Store the UE position
     UEpositions(k) = UEposition;
+    if evolveMode
+        %per-link AR(1) evolution of the inter-UE shadow fading: both
+        %endpoints' displacements decorrelate a link (the transmitting
+        %CPEs are stationary, so only the receiver's motion matters)
+        a_ue = 2.^(-(deltaD(k) + deltaD)'/decorr); %1 x K
+        shadowing_ue = a_ue.*mobState.shadow_ue(k,:) + sigma_sf*sqrt(1-a_ue.^2).*randn(1,K);
+        newcolumn_ue = [];
+    else
     % If this is not the first CPE
     if k-1>0
         %Compute conditional mean and standard deviation necessary to
@@ -303,6 +370,7 @@ for k = 1:K
 
     end
     shadowing_ue = meanvalues_ue + stdvalue_ue*randn(1,K);
+    end
     %Service-side repeater antenna gain: transmitter CPE l reaches user k
     %through its best-pointing sector panel (boresight at the horizon);
     %non-CPE transmitters (rows K_FWA+1:K) stay omnidirectional
@@ -327,8 +395,10 @@ for k = 1:K
     gainOverNoisedB_ue(:,k) = constantTerm - alpha*log10(distancesUEs(:,k)) + repServiceGaindB + shadowing_ue' - O2IdB(k) - noiseVariancedBm;
 
     % %Update shadowing correlation matrix and store realizations
-    shadowCorrMatrix_ue(1:k-1,k) = newcolumn_ue;
-    shadowCorrMatrix_ue(k,1:k-1) = newcolumn_ue';
+    if ~evolveMode
+        shadowCorrMatrix_ue(1:k-1,k) = newcolumn_ue;
+        shadowCorrMatrix_ue(k,1:k-1) = newcolumn_ue';
+    end
     shadowCPErealizations_ue(k,:) = shadowing_ue;  
 
     %Inter-UE spatial correlation (i.i.d. fading): scaled identities
@@ -362,4 +432,9 @@ for k = 1:K-K_FWA
     idxs_not_chosen = idxs(2:end);
     D_cell(idxs_not_chosen,k) = 0;
 end
+
+%Latent-variable state handed to the next temporal-mobility snapshot
+mobState = struct('UEpositions',UEpositions,'shadowSite',shadowSiteStore, ...
+    'LOSstate',LOSsiteStore,'O2IdB',O2IdB,'hUT',hUT, ...
+    'repOrientations',repOrientations,'shadow_ue',shadowCPErealizations_ue);
 end
