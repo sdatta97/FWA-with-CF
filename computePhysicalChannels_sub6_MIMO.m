@@ -14,11 +14,11 @@ phy_channel_ue = zeros(M_sectors,K-K_FWA,Ntx,N_cell);
 phy_channel_interFWA = zeros(K_FWA,K,N_FWA,N_FWA);
 for m = 1:M_sectors
     for k = 1:K_FWA
-        phy_channel_FWA (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k))*(randn(Ntx,N_FWA) + 1i*randn(Ntx,N_FWA))*sqrtm(R_cpe(:,:,m,k));     
+        phy_channel_FWA (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k))*(randn(Ntx,N_FWA) + 1i*randn(Ntx,N_FWA))*sqrtm(R_cpe(:,:,m,k));
     end
     for k = 1:K-K_FWA
         phy_channel_ue (m,k,:,:) = sqrt(0.5)*sqrtm(R_gNB(:,:,m,k+K_FWA))*(randn(Ntx,N_cell) + 1i*randn(Ntx,N_cell))*sqrtm(R_ue(:,:,m,k));
-    end 
+    end
 end
 if params.MOBILE
     %Channel aging factor per cellular UE (indoor and outdoor UEs move at
@@ -40,13 +40,49 @@ for q = 1:K_FWA
         end
     end
 end
-phy_channel_FWA_est = phy_channel_FWA;
-phy_channel_ue_est = phy_channel_ue;
-phy_channel_interFWA_est = phy_channel_interFWA;
-% perm_vec  = repmat(randperm(tau),1,2);
-% phi_index = perm_vec(1:K);
-%     W_tx = sqrt(0.5)*(randn(Ntx, tau)+1i*randn(Ntx,tau));
-%     % W_rx = sqrt(0.5)*(randn(Nrx, tau)+1i*randn(Nrx,tau));
-%         % channel_bar_dl (m,k,:) = sqrt(0.5*BETA(m,k))*(randn(Nrx,1) + 1i*randn(Nrx,1));
-%         c_dl (m,k) = sqrt(rho*tau)*BETA(m,k)/(1+rho*tau*BETA(m,k));
+if params.IMPERFECT_CSI
+    %Imperfect CSI: each link is estimated from CSI-RS observations
+    %(TS 38.214) received in white noise, followed by per-link LMMSE
+    %estimation. In the noise-normalized units used throughout, the
+    %pilot observation of a channel entry h ~ CN(0,beta) is
+    %y = h + n/sqrt(p_csi) with n ~ CN(0,1), so the LMMSE estimate is
+    %h_est = (gamma/(1+gamma))*y with pilot SNR gamma = p_csi*beta.
+    %CSI-RS EPRE follows the PDSCH EPRE plus the standardised
+    %powerControlOffset (TS 38.214, range -8..15 dB, default 0 dB).
+    p_csi = params.rho_tot*10^(0.1*params.csi_rs_offset_dB);
+    phy_channel_FWA_est = zeros(size(phy_channel_FWA));
+    phy_channel_ue_est = zeros(size(phy_channel_ue));
+    phy_channel_interFWA_est = zeros(size(phy_channel_interFWA));
+    for m = 1:M_sectors
+        for k = 1:K_FWA
+            beta = real(R_gNB(1,1,m,k)); %per-element channel variance (pattern-inclusive)
+            c = p_csi*beta/(p_csi*beta + 1);
+            noise = sqrt(0.5/p_csi)*(randn(Ntx,N_FWA) + 1i*randn(Ntx,N_FWA));
+            phy_channel_FWA_est(m,k,:,:) = c*(reshape(phy_channel_FWA(m,k,:,:),[Ntx,N_FWA]) + noise);
+        end
+        for k = 1:K-K_FWA
+            beta = real(R_gNB(1,1,m,k+K_FWA));
+            c = p_csi*beta/(p_csi*beta + 1);
+            noise = sqrt(0.5/p_csi)*(randn(Ntx,N_cell) + 1i*randn(Ntx,N_cell));
+            phy_channel_ue_est(m,k,:,:) = c*(reshape(phy_channel_ue(m,k,:,:),[Ntx,N_cell]) + noise);
+        end
+    end
+    %repeater-to-user links: sounded through the network-controlled
+    %repeater with the same normalized pilot power
+    for q = 1:K_FWA
+        for k = 1:K
+            if (q~=k)
+                beta = real(R_interue(1,1,q,k));
+                c = p_csi*beta/(p_csi*beta + 1);
+                noise = sqrt(0.5/p_csi)*(randn(N_FWA,N_FWA) + 1i*randn(N_FWA,N_FWA));
+                phy_channel_interFWA_est(q,k,:,:) = c*(reshape(phy_channel_interFWA(q,k,:,:),[N_FWA,N_FWA]) + noise);
+            end
+        end
+    end
+else
+    %perfect CSI: the estimates equal the true channels
+    phy_channel_FWA_est = phy_channel_FWA;
+    phy_channel_ue_est = phy_channel_ue;
+    phy_channel_interFWA_est = phy_channel_interFWA;
+end
 end

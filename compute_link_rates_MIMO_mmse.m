@@ -2,7 +2,7 @@ function rate_dl = compute_link_rates_MIMO_mmse(params,channel_dl, channel_est_d
 M_sectors = params.numGNB;
 K_FWA = params.numCPE;
 K = M_sectors*params.numUE + params.numCPE;
-BW = params.Band;
+BW = params.Band; %frequency reuse 1: every sector uses the full band
 TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
 N_CPE_FWA = size(channel_dl_FWA,4);
@@ -23,18 +23,10 @@ else
     Kt = 1; Kr_FWA = 1; Kr_cell = 1;
 end
 
-%Prepare cell to store the AP indices serving a specific UE
+%Serving sector(s) of each user
 Serv = cell(K,1);
-%Prepare cell to store the AP indices not serving a specific UE
-NoServ = cell(K,1);
-%Prepare cell to store the AP indices serving a specific UE
-%Prepare cell to store the AP indices not serving a specific UE
-%Construct the above array and cells
 for k = 1:K
-    servingBSs = find(D_FWA(:,k)==1);
-    NoservingBSs = find(D_FWA(:,k)==0);
-    Serv{k} = servingBSs;
-    NoServ{k} = NoservingBSs;
+    Serv{k} = find(D_FWA(:,k)==1);
 end
 
 %% initialization of c
@@ -45,47 +37,41 @@ D_Cell_Cell = zeros(K-K_FWA,K-K_FWA,N_UE,N_UE);
 dl_mmse_precoder_FWA = zeros(size(channel_est_dl_FWA));
 dl_mmse_precoder = zeros(size(channel_est_dl));
 scaling_LP_mmse = zeros(M_sectors,K);
+%MMSE precoding, structured like the OFDM beam matrices: the MMSE filter
+%basis inv_matrix is identical for every user a sector precodes, so it
+%is built once per sector and applied to each served user's channel.
+%Beamforming operates on the ESTIMATED channels (imperfect CSI when
+%params.IMPERFECT_CSI is set); physical reception below uses the true ones
 for m = 1:M_sectors
+    inv_matrix = eye(N_BS);
+    for q = 1:K_FWA
+        if ismember(m,Serv{q}) && ~ismember(q,set_repeat)
+            inv_matrix = inv_matrix + p_d*reshape(channel_est_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])*reshape(channel_est_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])';
+        end
+    end
+    for q = 1:K-K_FWA
+        if ismember(m,Serv{q+K_FWA})
+            inv_matrix = inv_matrix + p_d*reshape(channel_est_dl(m,q,:,:),[N_BS,N_UE])*reshape(channel_est_dl(m,q,:,:),[N_BS,N_UE])';
+        end
+    end
     for k = 1:K_FWA
         if ~ismember(k,set_repeat)
-            inv_matrix = eye(N_BS);
-            for q = 1:K_FWA
-                if ismember(m,Serv{q}) && ~ismember(q,set_repeat)                
-                    inv_matrix = inv_matrix + p_d*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])';
-                end
-            end
-            for q = 1:K-K_FWA
-                if ismember(m,Serv{q+K_FWA})
-                    inv_matrix = inv_matrix + p_d*reshape(channel_dl(m,q,:,:),[N_BS,N_UE])*reshape(channel_dl(m,q,:,:),[N_BS,N_UE])';
-                end
-            end
-            dl_mmse_precoder_FWA(m,k,:,:) = reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA]) + p_d*inv_matrix\(reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA]));
+            dl_mmse_precoder_FWA(m,k,:,:) = p_d*inv_matrix\(reshape(channel_est_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA]));
             if ismember(m,Serv{k})
-                scaling_LP_mmse(m,k) = scaling_LP_mmse(m,k) + norm(dl_mmse_precoder_FWA(m,k,:,:),'fro')^2;
+                scaling_LP_mmse(m,k) = norm(dl_mmse_precoder_FWA(m,k,:,:),'fro')^2;
             end
         end
     end
     for k = 1:K-K_FWA
-        inv_matrix = eye(N_BS);
-        for q = 1:K_FWA
-            if ismember(m,Serv{q}) && ~ismember(q,set_repeat) 
-                inv_matrix = inv_matrix + p_d*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])*reshape(channel_dl_FWA(m,q,:,:),[N_BS,N_CPE_FWA])';
-            end
-        end
-        for q = 1:K-K_FWA
-            if ismember(m,Serv{q+K_FWA})
-                inv_matrix = inv_matrix +  p_d*reshape(channel_dl(m,q,:,:),[N_BS,N_UE])*reshape(channel_dl(m,q,:,:),[N_BS,N_UE])';
-            end
-        end
-        dl_mmse_precoder(m,k,:,:) = reshape(dl_mmse_precoder(m,k,:,:),[N_BS,N_UE]) + p_d*inv_matrix\(reshape(channel_dl(m,k,:,:),[N_BS,N_UE]));
+        dl_mmse_precoder(m,k,:,:) = p_d*inv_matrix\(reshape(channel_est_dl(m,k,:,:),[N_BS,N_UE]));
         if ismember(m,Serv{k+K_FWA})
-            scaling_LP_mmse(m,k+K_FWA) = scaling_LP_mmse(m,k+K_FWA) + norm(dl_mmse_precoder(m,k,:,:),'fro')^2;
+            scaling_LP_mmse(m,k+K_FWA) = norm(dl_mmse_precoder(m,k,:,:),'fro')^2;
         end
     end
 end
 for m = 1:M_sectors
     for k = 1:K_FWA
-        if ismember(m,Serv{k}) && ~ismember(k,set_repeat) 
+        if ismember(m,Serv{k}) && ~ismember(k,set_repeat)
             dl_mmse_precoder_FWA(m,k,:,:) = reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])./sqrt(scaling_LP_mmse(m,k));
         end
     end
@@ -101,7 +87,7 @@ for m = 1:M_sectors
     for k = 1:K
         if ismember(m,Serv{k})
             if (k<=K_FWA)
-                if ~ismember(k,set_repeat) 
+                if ~ismember(k,set_repeat)
                     term = term + trace(reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])*reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])');
                 end
             else
@@ -114,11 +100,15 @@ for m = 1:M_sectors
         eta_eq(m,setA(~ismember(setA,set_repeat))) = (1/term)*D_FWA(m,setA(~ismember(setA,set_repeat)));
     end
 end
+%Effective gains: the channels channel_dl_FWA/channel_dl already carry
+%the sector antenna pattern of BS m towards each user (via the
+%pattern-inclusive large-scale gains inside R_gNB), so both the desired
+%links and every inter-sector interference term below are sectored
 for k = 1:K_FWA
-    if ~ismember(k,set_repeat) 
+    if ~ismember(k,set_repeat)
         for q = 1:K_FWA
             for m = 1:M_sectors
-                if ismember(m,Serv{q}) && ~ismember(q,set_repeat) 
+                if ismember(m,Serv{q}) && ~ismember(q,set_repeat)
                     D_FWA_FWA(k,q,:,:) = reshape(D_FWA_FWA(k,q,:,:),[N_CPE_FWA,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA])'*reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
                 end
             end
@@ -135,7 +125,7 @@ end
 for k = 1:K-K_FWA
     for q = 1:K_FWA
         for m = 1:M_sectors
-            if ismember(m,Serv{q}) && ~ismember(q,set_repeat) 
+            if ismember(m,Serv{q}) && ~ismember(q,set_repeat)
                 D_Cell_FWA(k,q,:,:) = reshape(D_Cell_FWA(k,q,:,:),[N_UE,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*reshape(channel_dl(m,k,:,:),[N_BS,N_UE])'*reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
             end
         end

@@ -25,10 +25,17 @@ params.c = 3e8; %speed of light (m/s)
 %params.mob_rho (one channel-aging factor per cellular UE) is set after
 %generateSetup, once the indoor/outdoor state of each UE is known
 %% Rate requirements
-params.r_min_cell = 35e6;
-params.r_max_FWA = 1e9;
+%FCC 2024 Section 706 Report (FCC 24-27, https://docs.fcc.gov/public/attachments/FCC-24-27A1.pdf):
+% - mobile 5G-NR coverage benchmark 35/3 Mbps DL/UL
+% - fixed broadband benchmark 100/20 Mbps
+% - long-term fixed broadband goal 1000/500 Mbps
+%Ericsson Mobility Report (FWA): busy-hour sustained per active user ~5 Mbps
+% (https://www.ericsson.com/en/reports-and-papers/mobility-report/articles/fixed-wireless-access)
+params.r_min_cell = 10e6; %busy-hour sustained cell-UE floor (~5-10 Mbps; the FCC 35/3
+                          %figure is a coverage benchmark, not a per-user busy-hour target)
+params.r_max_FWA = 1e9;   %FWA rate cap = FCC long-term fixed broadband goal (1 Gbps),
+                          %also the Verizon 5G Home "Ultimate" gigabit tier
 %%
-params.UE_split = 0; %fraction in I_band
 params.BEAM = 0;
 %%
 
@@ -45,7 +52,8 @@ params.complexRadius = 200; %housing complex radius around each site (m): CPEs a
 params.coverageRange_sub6 = 2*params.deployRange + 30; %wrap-around square length
 params.min_dist_2D = 35; %minimum BS-UT 2D distance (m)
 params.num_antennas_per_gNB = 64;
-params.rho_tot = 10^(0.1*75)*(Band/1e8);
+params.rho_tot = 10^(0.1*49); %BS Tx power 49 dBm per sector, per the SMa calibration
+                              %assumptions of TR 38.901 clause 7.8 (ETSI TR 138 901 V19.2.0)
 params.CELL_REPEAT = 0;
 params.FWA_REPEAT = 0;
 %Number of antennas per UE
@@ -76,24 +84,49 @@ params.r_vegetation = 0.10; %vegetation clutter density: 0 none, 0.10 sparse, 0.
 params.indoor_UT_ratio = 0.8; %fraction of cellular UEs indoors (Table 7.2-5)
 lambda_BS = 5;
 lambda_SC = 0; %no small cells (kept for the result-file format)
-lambda_UE = 1000; %200:200:1000; %combined UE density (per km^2) over the entire cell area
+%Active-user densities (busy-hour CONCURRENTLY ACTIVE UEs, not
+%subscribers). Suburban residential density averages ~1050 people/km^2
+%(Demographia international suburban densities, http://demographia.com/db-intlsub.htm;
+%FiveThirtyEight, https://fivethirtyeight.com/features/how-suburban-are-big-american-cities/),
+%rising to ~2000-4000/km^2 in a housing complex; with a ~3-5% busy-hour
+%active share this gives ~80-200 active UEs/km^2 indoors. Suburban roads
+%carry ~4-15 active in-car users/km^2. The resulting ~9 active UEs per
+%sector matches the full-buffer evaluation convention of 10 UEs per TRxP
+%(ITU-R M.2412-0, https://www.itu.int/dms_pub/itu-r/opb/rep/R-REP-M.2412-2017-PDF-E.pdf;
+%3GPP TR 38.913 / ETSI TR 138 913), and the 150/4 defaults reproduce the
+%80:20 indoor:outdoor UT ratio of TR 38.901 Table 7.2-5.
+lambda_UE_res_arr = 150; %50:50:400; %active UEs per km^2, residential block
+lambda_UE_road_arr = 4;  %2:2:20;    %active in-car UEs per km^2, roads outside (paired)
 params.Lmax = 1;
 params.preLogFactor = 1;
-params.loss_pc_cell = 5/100;
+params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
 SI_cancel_arr = 0; %-20:5:0; %SI cancellation factor sweep (dB) for the FWA phase;
                    %set to -20:5:0 to reproduce the retired SE_comparison.m experiment
-params.HW_IMPAIRMENTS = 1;  % 1 = hardware impairments on, 0 = ideal hardware
+params.HW_IMPAIRMENTS = 0;  % 1 = hardware impairments on, 0 = ideal hardware
 params.Kt = 0.9;            % transmitter impairment factor (1 = ideal)
 params.Kr = 0.9;            % receiver impairment factor (1 = ideal)
 params.Kt_rep = 0.9;        % repeater transmit-chain impairment factor (1 = ideal)
 params.Kr_rep = 0.9;        % repeater receive-chain impairment factor (1 = ideal)
+params.IMPERFECT_CSI = 1;   % 1 = beamforming uses MMSE channel estimates from noisy
+                            %     CSI-RS observations, 0 = perfect CSI
+params.csi_rs_offset_dB = 0;% CSI-RS EPRE relative to PDSCH EPRE (powerControlOffset,
+                            % TS 38.214; standardised range -8..15 dB, default 0)
 rep_gain_arr = 20; %10:10:50; %in dB %10^(0.1*(6.5+20*log10(params.fc/1e6)));
 num_rep_arr = 1:1:5; %TOTAL number of repeaters enabled in the network (swept)
 params.num_repeater_per_cpe = 1; %repeaters associated per served user (fixed, not swept)
 %Number of channel realizations per setup
 params.nbrOfRealizations = 10;
 
-r_min_arr = 1e6*(25:25:300);
+%Minimum guaranteed FWA rate per subscriber-plan tier (swept). Values
+%span the US 5G-FWA plan landscape (Q4 2024): 50 Mbps entry floor,
+%100 Mbps = FCC fixed-broadband benchmark and common base plan,
+%150-200 Mbps = current median delivered speeds (Verizon/AT&T ~150,
+%T-Mobile ~205), 300 Mbps = Verizon 5G Home standard-plan soft cap;
+%the gigabit "Ultimate" tier is captured by params.r_max_FWA = 1 Gbps.
+%Refs: Light Reading (https://www.lightreading.com/fixed-wireless-access/verizon-and-t-mobile-fwa-speeds-are-actually-increasing),
+%tecknexus (https://tecknexus.com/t-mobile-verizon-and-att-boost-5g-fwa-speeds-and-subscribers/),
+%Verizon FWA guide (https://www.verizon.com/home/internet/guides/what-is-fixed-wireless-access-fwa-technology/).
+r_min_arr = 1e6*(50:50:300);
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations: macro sites, each split into 3 co-located sector BSs
@@ -114,20 +147,17 @@ for idxBSDensity = 1:length(lambda_BS)
     RCPE = sqrt(params.min_dist_2D^2 + (params.complexRadius^2 - params.min_dist_2D^2)*rand(numCPE_tot,1));
     angleCPE = 2*pi*rand(numCPE_tot,1);
     CPE_locations = kron(siteLocations, ones(numCPE_all,1)) + [RCPE.*cos(angleCPE), RCPE.*sin(angleCPE)];
-    for idxUEDensity = 1:length(lambda_UE)
-        %% UE locations: two-density model over the entire cell area.
-        %A fraction indoor_UT_ratio (80%, Table 7.2-5) of the UEs lies in
-        %the housing complex annulus [min_dist_2D, complexRadius] and is
-        %indoors; the rest lies in the outer ring [complexRadius,
-        %deployRange] and is outdoors (in-car). The combined density over
-        %the cell is lambda_UE per km^2
-        A_cell = pi*(params.deployRange/1000)^2; %cell area (km^2)
-        %numUE_site is the total UE count of a site across ALL S sectors
-        %(lambda_UE is not a per-sector density); it retains the legacy
-        %1/3 factor of the original numUE formula
-        numUE_site = lambda_UE(idxUEDensity)*A_cell/3;
-        numUE_in = ceil(params.indoor_UT_ratio*numUE_site/S); %per sector, in complex
-        numUE_out = ceil((1-params.indoor_UT_ratio)*numUE_site/S); %per sector, outer ring
+    for idxUEDensity = 1:length(lambda_UE_res_arr)
+        %% UE locations: two-density model. Active residential UEs lie in
+        %the housing complex annulus [min_dist_2D, complexRadius] and are
+        %indoors; active in-car UEs lie on the roads in the outer ring
+        %[complexRadius, deployRange] and are outdoors. Counts follow the
+        %busy-hour active-user densities applied to the actual areas
+        lambda_road = lambda_UE_road_arr(min(idxUEDensity,end));
+        A_complex = pi*((params.complexRadius/1000)^2 - (params.min_dist_2D/1000)^2); %residential annulus (km^2)
+        A_road = pi*((params.deployRange/1000)^2 - (params.complexRadius/1000)^2); %outer ring (km^2)
+        numUE_in = ceil(lambda_UE_res_arr(idxUEDensity)*A_complex/S); %per sector, residential block (indoor)
+        numUE_out = ceil(lambda_road*A_road/S); %per sector, roads (in-car)
         params.numUE = numUE_in + numUE_out;
         numUE = params.numUE;
         UE_locations = zeros(M_sectors*numUE,2);
@@ -193,7 +223,7 @@ for idxBSDensity = 1:length(lambda_BS)
                     rate_dl = zeros(K-K_FWA,nbrOfRealizations);
                     for n = 1:nbrOfRealizations
                         [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-                        rate_dl(:,n) = compute_link_rates_OFDM_wi_repeater(params, channel_dl, channel_dl_FWA, channel_interFWA);         
+                        rate_dl(:,n) = compute_link_rates_OFDM_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);         
                     end
                 else
                     params.numCPE = 0;
@@ -207,7 +237,7 @@ for idxBSDensity = 1:length(lambda_BS)
                     rate_dl = zeros(K-K_FWA,nbrOfRealizations);
                     for n = 1:nbrOfRealizations
                         [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-                        rate_dl(:,n) = compute_link_rates_OFDM(params, channel_dl);         
+                        rate_dl(:,n) = compute_link_rates_OFDM(params, channel_dl, channel_est_dl);         
                     end
                 end
                 mean_rate_dl_cell = mean(rate_dl,2);
@@ -326,7 +356,13 @@ for idxBSDensity = 1:length(lambda_BS)
                         params.Band = Band;
                         mean_rate_dl_FWA = save_old_mean_FWA;
                         rate_dl = save_old_rate;
-                        %% Recording the Results
+                        if (Band_FWA > 0) && (K_FWA_max > 0)
+                            FWA_se_out = sum_FWA_rate/(Band_FWA*K_FWA_max);
+                        else
+                            FWA_se_out = 0; %no band or no served CPEs: report 0 instead of 0/0
+                        end
+
+                    %% Recording the Results
                     
                         %Taking care of folder directory creation etc
                         dataFolder = 'resultData';
@@ -343,29 +379,25 @@ for idxBSDensity = 1:length(lambda_BS)
                         result_string = strcat('/results_numFWA_',num2str(params.Lmax), 'Lmax_', num2str(numCPE_all),...
                             'CPE_',num2str(lambda_BS(idxBSDensity)),...
                             'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
-                            'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
-                            'lambdaUE_', num2str(deployRange),'deployRange_', ...
+                            'lambdaSC_',num2str(lambda_UE_res_arr(idxUEDensity)),...
+                            'lambdaUEres_',num2str(lambda_road),'lambdaUEroad_', ...
+                            num2str(deployRange),'deployRange_', ...
                             num2str(params.r_min_FWA/10^6),'min_FWA_rate', ...
                             num2str(params.repeat_gain),'repeater_gain', ...
                             num2str(params.num_repeater_tot),'num_repeater_', ...
                             num2str(SI_cancel_arr(idxSI)),'SI_cancel_', ...
                             aID);
-                        %     'CPE_',num2str(lambda_BS(idxBSDensity)),...
-                        %     'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
-                        %     'lambdaSC_',num2str(lambda_UE(idxUEDensity)),...
-                        %     'lambdaUE_', num2str(deployRange),'deployRange_', ...
-                        %     num2str(params.r_min_FWA/10^6),'min_FWA_rate', string(aID));
                         recording_text_file_string = strcat(rateFolder,result_string,'.csv');
                         fileID = fopen(recording_text_file_string,'w');
                         output_categories = ['lambdaBS,','lambdaSC,','numCPE,','lambdaUE,',...
-                        'deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','SI_cancel,','init_FWA,','max_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
+                        'lambdaUE_road,','deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','SI_cancel,','init_FWA,','max_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
                         fprintf(fileID,output_categories);
-                        formatSpec = '%d,%d,%d,%d,%d,%f,%f,%d,%d,%d,%d,%d,%f,%f,%f,%f\n';
+                        formatSpec = '%d,%d,%d,%d,%d,%d,%f,%f,%d,%d,%d,%d,%d,%f,%f,%f,%f\n';
                         fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
-                        lambda_UE(idxUEDensity),deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_tot,params.repeat_gain,SI_cancel_arr(idxSI),K_FWA_init,K_FWA_max,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_max));
+                        lambda_UE_res_arr(idxUEDensity),lambda_road,deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_tot,params.repeat_gain,SI_cancel_arr(idxSI),K_FWA_init,K_FWA_max,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), FWA_se_out);
                         fclose(fileID);
-                        % 'deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','init_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
-                        % lambda_UE(idxUEDensity),deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_tot,params.repeat_gain,K_FWA_init,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_init));
+                        % 'lambdaUE_road,','deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','init_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
+                        % lambda_UE_res_arr(idxUEDensity),lambda_road,deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_tot,params.repeat_gain,K_FWA_init,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_init));
                     end
                 end %idxSI (SI-cancellation sweep)
             end

@@ -1,9 +1,8 @@
-function rate_dl = compute_link_rates_OFDM_wi_repeater(params, channel_dl, channel_dl_FWA, channel_interFWA)
+function rate_dl = compute_link_rates_OFDM_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est)
 M_sectors = params.numGNB;
 K_FWA = params.numCPE;
 K = M_sectors*params.numUE + params.numCPE;
-BW = params.Band;
-P_band = BW/M_sectors; %orthogonal band per sector (reuse factor = M_sectors)
+BW = params.Band; %frequency reuse 1: every sector uses the full band
 TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
 N_UE = size(channel_dl,4);
@@ -26,14 +25,17 @@ if params.HW_IMPAIRMENTS
 else
     Kt = 1; Kr = 1; K_rep_hw = 1;
 end
-%Cellular UEs scheduled by each sector; the per-sector band is shared
-%equally among them (OFDMA), so each UE gets P_band/sectorLoad
-sectorLoad = sum(D_cell,2);
-%Serving sector of each UE
+%Serving sector of each UE and per-sector scheduled sets; each sector
+%shares the full band equally among its UEs (OFDMA)
 Serv = cell(K-K_FWA,1);
 for k = 1:K-K_FWA
     Serv{k} = find(D_cell(:,k)==1);
 end
+U = cell(M_sectors,1);
+for m = 1:M_sectors
+    U{m} = find(D_cell(m,:)==1);
+end
+sectorLoad = sum(D_cell,2);
 K_rep = params.num_repeater_per_cpe;
 %Repeaters (CPEs) associated with each UE
 Rep = cell(K-K_FWA,1);
@@ -47,46 +49,114 @@ for k = 1:K-K_FWA
     [vmax,servingCPEs] =  maxk(v,K_rep);
     Rep{k} = servingCPEs(isfinite(vmax));
 end
+%Repeater-path component of every sector-to-UE channel, computed once:
+%H_rep(m,k,:,n) = sum over UE k's repeaters of (BS m -> repeater) x donor
+%gain x repeater gain x (repeater -> UE k). The composite channel used
+%for beams, DS/MSI, and interference is channel_dl + H_rep.
+H_rep = zeros(M_sectors,K-K_FWA,N_BS,N_UE);
+%estimated counterpart, built from the ESTIMATED BS-to-repeater and
+%repeater-to-UE channels; used only for beamforming (imperfect CSI)
+H_rep_est = zeros(M_sectors,K-K_FWA,N_BS,N_UE);
+for k = 1:K-K_FWA
+    for kk = 1:numel(Rep{k})
+        rep_idx = Rep{k}(kk);
+        for m = 1:M_sectors
+            G = reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain;
+            G_est = reshape(channel_est_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain;
+            for n = 1:N_UE
+                H_rep(m,k,:,n) = reshape(H_rep(m,k,:,n),[N_BS,1]) + G*reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);
+                H_rep_est(m,k,:,n) = reshape(H_rep_est(m,k,:,n),[N_BS,1]) + G_est*reshape(channel_interFWA_est(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);
+            end
+        end
+    end
+end
+H_comp = channel_dl + H_rep; %repeater-inclusive composite channels (true)
+H_comp_est = channel_est_dl + H_rep_est; %estimated composites, for beamforming only
+%Matched-filter beams each sector applies towards its own scheduled UEs,
+%normalized columns of the ESTIMATED composite channels; physical
+%reception uses the true ones. The same matrices provide the victim's own
+%DS/MSI beams and the beamformed inter-sector interference, averaged over
+%the interferer's scheduled set (round-robin OFDMA)
+W = cell(M_sectors,1);
+for m = 1:M_sectors
+    W{m} = beamMatrix(H_comp_est,m,U{m},N_BS,N_UE);
+end
 
 %% Computing rates
 DS_dl = zeros(K-K_FWA,N_UE);
 MSI_dl = zeros(K-K_FWA,N_UE);
+MCI_dl = zeros(K-K_FWA,N_UE);
 HI_dl = zeros(K-K_FWA,N_UE);
 noise_dl = abs(sqrt(0.5)*(randn(K-K_FWA,N_UE) + 1j*randn(K-K_FWA,N_UE))).^2;
 rate_dl = zeros(K-K_FWA,1);
 for k = 1:K-K_FWA
+    m = Serv{k};
+    share = BW/sectorLoad(m);
+    W_own = W{m}; U_own = U{m};
+    int_sectors = setdiff(1:M_sectors,m); %reuse 1: every other sector interferes
     for n = 1:N_UE
         %receive channel of UE k split into direct and repeater-path
         %components: the useful signal keeps only sqrt(K_rep_hw) of the
         %repeater branch, the rest becomes repeater hardware distortion
-        eff_dir = reshape(channel_dl(Serv{k},k,:,n),N_BS,1);
-        eff_rep = zeros(N_BS,1);
-        for kk = 1:numel(Rep{k})
-            rep_idx = Rep{k}(kk);
-            eff_rep = eff_rep + reshape(channel_dl_FWA(Serv{k},rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(Serv{k},rep_idx)*rep_gain*reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);
-        end
-        eff_channel = eff_dir + eff_rep;         %composite (beamforming basis)
+        eff_dir = reshape(channel_dl(m,k,:,n),N_BS,1);
+        eff_rep = reshape(H_rep(m,k,:,n),N_BS,1);
+        eff_channel = eff_dir + eff_rep;            %composite (true)
         eff_sig = eff_dir + sqrt(K_rep_hw)*eff_rep; %coherent part after repeater HI
-        ds_base = p_d*abs(eff_sig'*eff_channel./norm(eff_channel))^2;
+        w_n = getBeam(W_own,U_own,k,n,N_UE);
+        ds_base = p_d*abs(eff_sig'*w_n)^2;
         DS_dl(k,n) = Kr*Kt*ds_base;
         HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*ds_base ...
-                   + (1-K_rep_hw)*p_d*abs(eff_rep'*eff_channel./norm(eff_channel))^2;
+                   + (1-K_rep_hw)*p_d*abs(eff_rep'*w_n)^2;
         for nn = 1:N_UE
             if (nn~=n)
-                nn_eff_channel = reshape(channel_dl(Serv{k},k,:,nn),N_BS,1);
-                 for kk = 1:numel(Rep{k})
-                    rep_idx = Rep{k}(kk);
-                    nn_eff_channel = nn_eff_channel + reshape(channel_dl_FWA(Serv{k},rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(Serv{k},rep_idx)*rep_gain*reshape(channel_interFWA(rep_idx,k+K_FWA,:,nn),[N_CPE_FWA,1]);
-                end
+                nn_eff_channel = reshape(H_comp(m,k,:,nn),N_BS,1);
                 if (norm(nn_eff_channel,'fro') < norm(eff_channel,'fro'))
-                    msi_base = p_d*abs(eff_sig'*nn_eff_channel./norm(nn_eff_channel))^2;
+                    w_nn = getBeam(W_own,U_own,k,nn,N_UE);
+                    msi_base = p_d*abs(eff_sig'*w_nn)^2;
                     MSI_dl(k,n) = Kr*Kt*msi_base;
                     HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*msi_base ...
-                               + (1-K_rep_hw)*p_d*abs(eff_rep'*nn_eff_channel./norm(nn_eff_channel))^2;
+                               + (1-K_rep_hw)*p_d*abs(eff_rep'*w_nn)^2;
                 end
             end
         end
-        rate_dl(k) = rate_dl(k) + (P_band/sectorLoad(Serv{k}))*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
+        %inter-sector (co-channel) interference with the interferers'
+        %actual beamforming towards their own scheduled UEs; the victim's
+        %interference channel includes its repeaters re-amplifying the
+        %interfering sector's signal (donor gain towards that sector)
+        mci_base = 0;
+        for mm = int_sectors
+            if ~isempty(W{mm})
+                h_int = reshape(H_comp(mm,k,:,n),N_BS,1);
+                mci_base = mci_base + p_d*mean(abs(h_int'*W{mm}).^2);
+            end
+        end
+        MCI_dl(k,n) = Kr*Kt*mci_base;
+        HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*mci_base;
+        rate_dl(k) = rate_dl(k) + share*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
     end
 end
+end
+
+function W = beamMatrix(H_comp,m,U,N_BS,N_UE)
+%Columns are the unit-norm matched-filter beams sector m applies towards
+%its scheduled UEs (one per UE antenna stream), from the composite channels
+if isempty(U)
+    W = zeros(N_BS,0);
+    return
+end
+W = zeros(N_BS,numel(U)*N_UE);
+c = 0;
+for q = U(:)'
+    for nn = 1:N_UE
+        h = reshape(H_comp(m,q,:,nn),N_BS,1);
+        c = c + 1;
+        W(:,c) = h./norm(h);
+    end
+end
+end
+
+function w = getBeam(W,U,q,nn,N_UE)
+%Beam a sector applies towards antenna nn of its scheduled UE q: a column
+%of its beam matrix
+w = W(:,(find(U==q,1)-1)*N_UE+nn);
 end
