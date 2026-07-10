@@ -54,8 +54,8 @@ params.min_dist_2D = 35; %minimum BS-UT 2D distance (m)
 params.num_antennas_per_gNB = 64;
 params.rho_tot = 10^(0.1*49); %BS Tx power 49 dBm per sector, per the SMa calibration
                               %assumptions of TR 38.901 clause 7.8 (ETSI TR 138 901 V19.2.0)
-params.CELL_REPEAT = 0;
-params.FWA_REPEAT = 0;
+params.CELL_REPEAT = 1;
+params.FWA_REPEAT = 1;
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -102,7 +102,7 @@ params.preLogFactor = 1;
 params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
 SI_cancel_arr = 0; %-20:5:0; %SI cancellation factor sweep (dB) for the FWA phase;
                    %set to -20:5:0 to reproduce the retired SE_comparison.m experiment
-params.HW_IMPAIRMENTS = 0;  % 1 = hardware impairments on, 0 = ideal hardware
+params.HW_IMPAIRMENTS = 1;  % 1 = hardware impairments on, 0 = ideal hardware
 params.Kt = 0.9;            % transmitter impairment factor (1 = ideal)
 params.Kr = 0.9;            % receiver impairment factor (1 = ideal)
 params.Kt_rep = 0.9;        % repeater transmit-chain impairment factor (1 = ideal)
@@ -111,9 +111,20 @@ params.IMPERFECT_CSI = 1;   % 1 = beamforming uses MMSE channel estimates from n
                             %     CSI-RS observations, 0 = perfect CSI
 params.csi_rs_offset_dB = 0;% CSI-RS EPRE relative to PDSCH EPRE (powerControlOffset,
                             % TS 38.214; standardised range -8..15 dB, default 0)
-rep_gain_arr = 20; %10:10:50; %in dB %10^(0.1*(6.5+20*log10(params.fc/1e6)));
-num_rep_arr = 1:1:5; %TOTAL number of repeaters enabled in the network (swept)
+%Network-controlled repeater (NCR) amplification, per 3GPP: fixed
+%amplification gain of 90 dB subject to the maximum output power
+%constraint of 33 dBm (evaluation assumptions of TR 38.867, "Study on NR
+%network-controlled repeaters"; RF repeater requirements in TS 38.106).
+%The cap is applied per repeater at its actual operating point below, so
+%the effective gain is min(G_max, P_max/P_in)
+rep_gain_arr = 90; %NCR amplification gain G_max (dB), TR 38.867
+params.rep_max_pow_dBm = 33; %NCR maximum output power (dBm), TR 38.867 / TS 38.106
+num_rep_arr = 1:1:6; %total enabled repeaters; attachment is per donor sector,
+                     %so coverage saturates at one repeater per sector (6)
 params.num_repeater_per_cpe = 1; %repeaters associated per served user (fixed, not swept)
+params.rep_assist_frac = 0.2;    %fraction of each sector's WEAKEST cellular UEs (cell edge,
+                                 %by serving-link large-scale gain) eligible for repeater
+                                 %assistance; the rest keep the pure direct path
 %Number of channel realizations per setup
 params.nbrOfRealizations = 10;
 
@@ -181,6 +192,12 @@ for idxBSDensity = 1:length(lambda_BS)
         [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs,isIndoor,hUT,O2IdB,repDonorGaindB] = generateSetup(params,str2double(aID));
         params.rep_donor_gain = db2pow(repDonorGaindB); %donor-side repeater sector antenna gain (linear power, M_sectors x K_FWA)
         params.gainOverNoise_lin = db2pow(gainOverNoisedB); %BS-to-user large-scale gain (linear), single source of truth
+        %Total downlink power arriving at each repeater's donor panel (mW),
+        %summed over all sector BSs: sets the operating point of the NCR
+        %output-power cap. gainOverNoise_lin is normalized by the full-band
+        %noise power, which is re-applied here
+        noise_mW = 10^(0.1*(-174 + 10*log10(Band) + params.noiseFigure));
+        P_in_rep_mW = params.rho_tot*noise_mW*sum(params.gainOverNoise_lin(:,1:numCPE_tot).*params.rep_donor_gain,1)';
         %Per-UE channel aging factor: indoor UEs move at 3 km/h, outdoor
         %UEs at 40 km/h (TR 38.901 Table 7.2-5)
         v_ue = params.ue_velocity_outdoor*ones(M_sectors*numUE,1);
@@ -189,7 +206,12 @@ for idxBSDensity = 1:length(lambda_BS)
         params.BETA_interUE = db2pow(gainOverNoisedB_ue);
         for idxnumrep = 1:length(num_rep_arr)  
             for idxrepgain = 1:length(rep_gain_arr)
-                params.repeat_gain = rep_gain_arr(idxrepgain);
+                params.repeat_gain = rep_gain_arr(idxrepgain); %G_max (dB), recorded in the CSV
+                %Effective per-repeater AMPLITUDE gain: fixed gain capped by
+                %the NCR maximum output power at each repeater's operating
+                %point (TR 38.867: 90 dB / 33 dBm)
+                params.repeat_gain_amp = sqrt(min(10^(0.1*rep_gain_arr(idxrepgain)), ...
+                    10^(0.1*params.rep_max_pow_dBm)./P_in_rep_mW));
                 params.num_repeater_tot = num_rep_arr(idxnumrep); %total repeaters enabled
                 %Enabled repeater pool for the cellular-UE phase, chosen
                 %to maximise coverage: every UE votes for the repeater it
@@ -321,7 +343,9 @@ for idxBSDensity = 1:length(lambda_BS)
                                     v_rep(setdiff(1:numCPE_tot,candidates)) = -Inf;
                                     v_rep(kCPE) = -Inf;
                                     [v_best,best_rep] = max(v_rep);
-                                    if isfinite(v_best)
+                                    %v_best = 0 means no same-donor-sector candidate
+                                    %(BETA_FWA_assoc is masked by D_FWA): no vote
+                                    if isfinite(v_best) && v_best > 0
                                         votes(best_rep) = votes(best_rep) + 1;
                                     end
                                 end

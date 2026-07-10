@@ -11,9 +11,12 @@ p_d = params.rho_tot; % 1*K;
 D_FWA = params.D_FWA;
 D_cell = params.D_cell;
 BETA_interUE = params.BETA_interUE;
-rep_gain = params.repeat_gain;
+%Per-repeater effective AMPLITUDE gain of the NCR forward chain: fixed
+%amplification gain capped by the maximum output power at the repeater's
+%operating point (TR 38.867: 90 dB / 33 dBm), computed in the main script
+rep_gain_amp = params.repeat_gain_amp;
 %Donor-side sector antenna of the network-controlled repeaters: amplitude
-%gain of CPE q's best-pointing sector panel towards sector BS m
+%gain of the CPE donor-locked sector panel towards sector BS m
 rep_donor_amp = sqrt(params.rep_donor_gain);
 %BS-to-CPE large-scale gain (linear), from the shared gain matrix; used
 %only for the repeater-selection metric
@@ -37,17 +40,43 @@ for m = 1:M_sectors
 end
 sectorLoad = sum(D_cell,2);
 K_rep = params.num_repeater_per_cpe;
-%Repeaters (CPEs) associated with each UE
+%Repeater assistance is restricted to the WEAKEST cellular UEs of each
+%sector (the cell-edge users): the rep_assist_frac fraction with the
+%lowest serving-link large-scale gain. Strong UEs keep the pure direct
+%path, so repeater-injected interference cannot degrade the healthy
+%majority (and starve the cell band adaptation at its low percentile).
+assist = false(K-K_FWA,1);
+gain_ue = params.gainOverNoise_lin(:,K_FWA+1:end);
+for m = 1:M_sectors
+    served = U{m};
+    [~,ord] = sort(gain_ue(m,served),'ascend');
+    n_assist = ceil(params.rep_assist_frac*numel(served));
+    assist(served(ord(1:n_assist))) = true;
+end
+%Donor sector of each CPE/repeater: the sector it is served by, which is
+%where its donor panel is locked. An NCR forwards its donor gNB's signal,
+%so a UE may only be assisted by a repeater whose donor sector is the
+%UE's own serving sector - attaching to a repeater fed by another sector
+%would inject that sector's signal as amplified interference
+donor_of = zeros(K_FWA,1);
+for q = 1:K_FWA
+    donor_of(q) = find(D_FWA(:,q)==1,1);
+end
+%Repeaters (CPEs) associated with each assisted UE
 Rep = cell(K-K_FWA,1);
 for k = 1:K-K_FWA
-    %repeater selection metric includes both repeater antenna gains:
-    %donor (in rep_donor_gain) and service (in BETA_interUE)
-    v = BETA_FWA(Serv{k},:)'.*params.rep_donor_gain(Serv{k},:)'.*BETA_interUE(1:K_FWA,k+K_FWA);
-    %only CPEs enabled as repeaters (params.set_repeat) may be selected;
-    %each UE associates with at most K_rep of them
-    v(setdiff(1:K_FWA,params.set_repeat)) = -Inf;
-    [vmax,servingCPEs] =  maxk(v,K_rep);
-    Rep{k} = servingCPEs(isfinite(vmax));
+    if assist(k)
+        %repeater selection metric includes both repeater antenna gains:
+        %donor (in rep_donor_gain) and service (in BETA_interUE)
+        v = BETA_FWA(Serv{k},:)'.*params.rep_donor_gain(Serv{k},:)'.*BETA_interUE(1:K_FWA,k+K_FWA);
+        %only CPEs enabled as repeaters (params.set_repeat) whose donor
+        %sector matches the UE's serving sector may be selected; each
+        %assisted UE associates with at most K_rep of them
+        v(setdiff(1:K_FWA,params.set_repeat)) = -Inf;
+        v(donor_of ~= Serv{k}) = -Inf;
+        [vmax,servingCPEs] =  maxk(v,K_rep);
+        Rep{k} = servingCPEs(isfinite(vmax));
+    end
 end
 %Repeater-path component of every sector-to-UE channel, computed once:
 %H_rep(m,k,:,n) = sum over UE k's repeaters of (BS m -> repeater) x donor
@@ -61,8 +90,8 @@ for k = 1:K-K_FWA
     for kk = 1:numel(Rep{k})
         rep_idx = Rep{k}(kk);
         for m = 1:M_sectors
-            G = reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain;
-            G_est = reshape(channel_est_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain;
+            G = reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain_amp(rep_idx);
+            G_est = reshape(channel_est_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain_amp(rep_idx);
             for n = 1:N_UE
                 H_rep(m,k,:,n) = reshape(H_rep(m,k,:,n),[N_BS,1]) + G*reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);
                 H_rep_est(m,k,:,n) = reshape(H_rep_est(m,k,:,n),[N_BS,1]) + G_est*reshape(channel_interFWA_est(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);

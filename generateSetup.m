@@ -177,22 +177,6 @@ for k = 1:K
         A_H = -min(12*(relAzimuth/phi_3dB)^2, A_max);
         sectorGaindB(l) = G_ant_max - min(-(A_V + A_H), A_max);
     end
-    %Donor-side repeater antenna gain: CPE k reaches sector BS l through
-    %its best-pointing sector panel (boresight at the horizon)
-    if k <= K_FWA
-        for l = 1:M_sectors
-            azCPEtoBS = rad2deg(angle(APpositionsWrapped(l,whichpos(l)) - UEposition));
-            zenCPEtoBS = 90 - rad2deg(atan(distanceVertical/max(distanceAPstoUE(l),1))); %pointing up at the BS
-            bestGain = -Inf;
-            for s = 1:S
-                relAzimuth = mod(azCPEtoBS - (repOrientations(k) + (s-1)*360/S) + 180, 360) - 180;
-                A_V = -min(12*((zenCPEtoBS - 90)/theta_3dB)^2, SLA_V);
-                A_H = -min(12*(relAzimuth/phi_3dB)^2, A_max);
-                bestGain = max(bestGain, G_ant_max - min(-(A_V + A_H), A_max));
-            end
-            repDonorGaindB(l,k) = bestGain;
-        end
-    end
     %LOS state per site (SMa LOS probability, Table 7.4.2-1), shared by
     %the co-located sectors of a site
     LOSstate = false(M_sectors,1);
@@ -269,6 +253,27 @@ for k = 1:K
     %Compute the channel gain divided by noise power: SMa pathloss,
     %sector antenna gain, per-link scaled shadow fading, and O2I loss
     gainOverNoisedB(:,k) = -PLdB + sectorGaindB + sigmaSF.*shadowing' - O2IdB(k) - noiseVariancedBm;
+    %Donor-side repeater antenna: the CPE aims ONE panel at its serving
+    %(donor) sector - the strongest link just computed - and every
+    %sector's donor gain is that single panel's pattern response. Signals
+    %from other directions are therefore suppressed by the panel pattern
+    %instead of each being caught by its own best-pointing panel, so the
+    %repeater does not re-amplify interference at full gain.
+    if k <= K_FWA
+        [~,m_donor] = max(gainOverNoisedB(:,k));
+        azDonor = rad2deg(angle(APpositionsWrapped(m_donor,whichpos(m_donor)) - UEposition));
+        panelAz = repOrientations(k) + (0:S-1)*360/S;
+        [~,p_star] = min(abs(mod(azDonor - panelAz + 180, 360) - 180));
+        boresight_p = panelAz(p_star);
+        for l = 1:M_sectors
+            azCPEtoBS = rad2deg(angle(APpositionsWrapped(l,whichpos(l)) - UEposition));
+            zenCPEtoBS = 90 - rad2deg(atan(distanceVertical/max(distanceAPstoUE(l),1))); %pointing up at the BS
+            relAzimuth = mod(azCPEtoBS - boresight_p + 180, 360) - 180;
+            A_V = -min(12*((zenCPEtoBS - 90)/theta_3dB)^2, SLA_V);
+            A_H = -min(12*(relAzimuth/phi_3dB)^2, A_max);
+            repDonorGaindB(l,k) = G_ant_max - min(-(A_V + A_H), A_max);
+        end
+    end
     
     %Update shadowing correlation matrix and store realizations
     shadowCorrMatrix(1:k-1,k) = newcolumn;

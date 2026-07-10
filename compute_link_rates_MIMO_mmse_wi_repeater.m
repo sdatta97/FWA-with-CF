@@ -13,9 +13,12 @@ D_FWA = params.D_FWA;
 %only for the repeater-selection metric
 BETA = params.gainOverNoise_lin(:,1:K_FWA);
 BETA_interUE = params.BETA_interUE;
-rep_gain = params.repeat_gain;
+%Per-repeater effective AMPLITUDE gain of the NCR forward chain: fixed
+%amplification gain capped by the maximum output power at the repeater's
+%operating point (TR 38.867: 90 dB / 33 dBm), computed in the main script
+rep_gain_amp = params.repeat_gain_amp;
 %Donor-side sector antenna of the network-controlled repeaters: amplitude
-%gain of CPE q's best-pointing sector panel towards sector BS m
+%gain of the CPE's donor-locked sector panel towards sector BS m
 rep_donor_amp = sqrt(params.rep_donor_gain);
 BETA = BETA.*D_FWA;
 if params.HW_IMPAIRMENTS
@@ -33,6 +36,15 @@ for k = 1:K
 end
 
 K_rep = params.num_repeater_per_cpe;
+%Donor sector of each CPE/repeater: the sector its donor panel is locked
+%to. An NCR forwards its donor gNB's signal, so a served CPE may only be
+%assisted by a repeater with the same donor sector as its own serving
+%sector (a repeater fed by another sector would inject that sector's
+%signal as amplified interference)
+donor_of = zeros(K_FWA,1);
+for q = 1:K_FWA
+    donor_of(q) = find(D_FWA(:,q)==1,1);
+end
 %Repeaters (CPEs) associated with each served CPE, in the same format as
 %the OFDM rate functions: one selection per user, capped at K_rep
 Rep = cell(K_FWA,1);
@@ -42,9 +54,10 @@ for k = 1:K_FWA
         %donor (in rep_donor_gain) and service (in BETA_interUE),
         %aggregated over the CPE's serving sector(s)
         v = sum(BETA(Serv{k},1:K_FWA).*params.rep_donor_gain(Serv{k},:),1)'.*BETA_interUE(1:K_FWA,k);
-        %only CPEs enabled as repeaters (params.set_repeat) may be
-        %selected; each served CPE associates with at most K_rep of them
+        %only CPEs enabled as repeaters (params.set_repeat) with the same
+        %donor sector may be selected; at most K_rep per served CPE
         v(setdiff(1:K_FWA,params.set_repeat)) = -Inf;
+        v(donor_of ~= donor_of(k)) = -Inf;
         [vmax,servingCPEs] =  maxk(v,K_rep);
         Rep{k} = sort(servingCPEs(isfinite(vmax)));
     end
@@ -63,8 +76,8 @@ for k = 1:K_FWA
     for kk = 1:numel(Rep{k})
         rep_idx = Rep{k}(kk);
         for m = 1:M_sectors
-            H_FWA_rep(m,k,:,:) = reshape(H_FWA_rep(m,k,:,:),[N_BS,N_CPE_FWA]) + reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain*reshape(channel_interFWA(rep_idx,k,:,:),[N_CPE_FWA,N_CPE_FWA]);
-            H_FWA_rep_est(m,k,:,:) = reshape(H_FWA_rep_est(m,k,:,:),[N_BS,N_CPE_FWA]) + reshape(channel_est_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain*reshape(channel_interFWA_est(rep_idx,k,:,:),[N_CPE_FWA,N_CPE_FWA]);
+            H_FWA_rep(m,k,:,:) = reshape(H_FWA_rep(m,k,:,:),[N_BS,N_CPE_FWA]) + reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain_amp(rep_idx)*reshape(channel_interFWA(rep_idx,k,:,:),[N_CPE_FWA,N_CPE_FWA]);
+            H_FWA_rep_est(m,k,:,:) = reshape(H_FWA_rep_est(m,k,:,:),[N_BS,N_CPE_FWA]) + reshape(channel_est_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain_amp(rep_idx)*reshape(channel_interFWA_est(rep_idx,k,:,:),[N_CPE_FWA,N_CPE_FWA]);
         end
     end
 end
