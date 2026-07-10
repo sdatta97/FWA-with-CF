@@ -1,7 +1,7 @@
 function rate_dl = compute_link_rates_MIMO_mmse_wi_repeater(params,channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est)
-M = params.numGNB;
+M_sectors = params.numGNB;
 K_FWA = params.numCPE;
-K = M*params.numUE + params.numCPE;
+K = M_sectors*params.numUE + params.numCPE;
 BW = params.Band;
 TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
@@ -9,7 +9,9 @@ N_CPE_FWA = size(channel_dl_FWA,4);
 N_UE = size(channel_dl,4);
 p_d = params.rho_tot; % 1*K;
 D_FWA = params.D_FWA;
-BETA = params.BETA;
+%BS-to-CPE large-scale gain (linear), from the shared gain matrix; used
+%only for the repeater-selection metric
+BETA = params.gainOverNoise_lin(:,1:K_FWA);
 BETA_interUE = params.BETA_interUE;
 rep_gain = params.repeat_gain;
 %Donor-side sector antenna of the network-controlled repeaters: amplitude
@@ -49,7 +51,7 @@ NoRep = cell(K_FWA,1);
 %Construct the above array and cells
 for k = 1:K_FWA
     if ~ismember(k,params.set_repeat)
-        for m = 1:M
+        for m = 1:M_sectors
             if ismember(m,Serv{k})
                 %repeater selection metric includes both repeater antenna
                 %gains: donor (in rep_donor_gain) and service (in BETA_interUE)
@@ -76,8 +78,8 @@ D_Cell_FWA = zeros(K-K_FWA,K_FWA,N_UE,N_CPE_FWA);
 D_Cell_Cell = zeros(K-K_FWA,K-K_FWA,N_UE,N_UE);
 dl_mmse_precoder_FWA = zeros(size(channel_est_dl_FWA));
 dl_mmse_precoder = zeros(size(channel_est_dl));
-scaling_LP_mmse = zeros(M,K);
-for m = 1:M
+scaling_LP_mmse = zeros(M_sectors,K);
+for m = 1:M_sectors
     for k = 1:K_FWA
         if ~ismember(k,params.set_repeat)
             inv_matrix = eye(N_BS);
@@ -130,7 +132,7 @@ for m = 1:M
         end
     end
 end
-for m = 1:M
+for m = 1:M_sectors
     for k = 1:K_FWA
         if ismember(m,Serv{k}) && ~ismember(k,params.set_repeat)
             dl_mmse_precoder_FWA(m,k,:,:) = reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])./sqrt(scaling_LP_mmse(m,k));
@@ -142,8 +144,8 @@ for m = 1:M
         end
     end
 end
-eta_eq = zeros(M,K);
-for m = 1:M
+eta_eq = zeros(M_sectors,K);
+for m = 1:M_sectors
     term = 0;
     for k = 1:K
         if ismember(m,Serv{k})
@@ -167,9 +169,9 @@ for k = 1:K_FWA
         %into the direct component and the repeater-path component. The
         %useful signal carries only sqrt(K_rep_hw) of the repeater branch;
         %the rest of the repeater-path power becomes hardware distortion
-        eff_dir_all = cell(M,1);
-        eff_rep_all = cell(M,1);
-        for m = 1:M
+        eff_dir_all = cell(M_sectors,1);
+        eff_rep_all = cell(M_sectors,1);
+        for m = 1:M_sectors
             eff_dir_all{m} = reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA]);
             eff_rep_all{m} = zeros(N_BS,N_CPE_FWA);
             for qq = 1:numel(Rep{k})
@@ -179,7 +181,7 @@ for k = 1:K_FWA
         end
         for q = 1:K_FWA
             if ~ismember(q,params.set_repeat)
-                for m = 1:M
+                for m = 1:M_sectors
                     if ismember(m,Serv{q})
                         w_q = reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
                         D_FWA_FWA(k,q,:,:) = reshape(D_FWA_FWA(k,q,:,:),[N_CPE_FWA,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*(eff_dir_all{m} + sqrt(K_rep_hw)*eff_rep_all{m})'*w_q;
@@ -189,7 +191,7 @@ for k = 1:K_FWA
             end
         end
         for q = 1:K-K_FWA
-            for m = 1:M
+            for m = 1:M_sectors
                 if ismember(m,Serv{q+K_FWA})
                     w_q = reshape(dl_mmse_precoder(m,q,:,:),[N_BS,N_UE]);
                     D_FWA_Cell(k,q,:,:) = reshape(D_FWA_Cell(k,q,:,:),[N_CPE_FWA,N_UE]) + sqrt(p_d*eta_eq(m,q+K_FWA))*(eff_dir_all{m} + sqrt(K_rep_hw)*eff_rep_all{m})'*w_q;
@@ -202,7 +204,7 @@ end
 for k = 1:K-K_FWA
     for q = 1:K_FWA
         if ~ismember(q,params.set_repeat) 
-            for m = 1:M
+            for m = 1:M_sectors
                 if ismember(m,Serv{q})
                     D_Cell_FWA(k,q,:,:) = reshape(D_Cell_FWA(k,q,:,:),[N_UE,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*reshape(channel_dl(m,k,:,:),[N_BS,N_UE])'*reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
                 end
@@ -210,7 +212,7 @@ for k = 1:K-K_FWA
         end
     end
     for q = 1:K-K_FWA
-        for m = 1:M
+        for m = 1:M_sectors
             if ismember(m,Serv{q+K_FWA})
                 D_Cell_Cell(k,q,:,:) = reshape(D_Cell_Cell(k,q,:,:),[N_UE,N_UE]) + sqrt(p_d*eta_eq(m,q+K_FWA))*reshape(channel_dl(m,k,:,:),[N_BS,N_UE])'*reshape(dl_mmse_precoder(m,q,:,:),[N_BS,N_UE]);
             end

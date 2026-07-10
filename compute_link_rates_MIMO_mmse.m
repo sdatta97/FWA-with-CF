@@ -1,7 +1,7 @@
 function rate_dl = compute_link_rates_MIMO_mmse(params,channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA)
-M = params.numGNB;
+M_sectors = params.numGNB;
 K_FWA = params.numCPE;
-K = M*params.numUE + params.numCPE;
+K = M_sectors*params.numUE + params.numCPE;
 BW = params.Band;
 TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
@@ -44,8 +44,8 @@ D_Cell_FWA = zeros(K-K_FWA,K_FWA,N_UE,N_CPE_FWA);
 D_Cell_Cell = zeros(K-K_FWA,K-K_FWA,N_UE,N_UE);
 dl_mmse_precoder_FWA = zeros(size(channel_est_dl_FWA));
 dl_mmse_precoder = zeros(size(channel_est_dl));
-scaling_LP_mmse = zeros(M,K);
-for m = 1:M
+scaling_LP_mmse = zeros(M_sectors,K);
+for m = 1:M_sectors
     for k = 1:K_FWA
         if ~ismember(k,set_repeat)
             inv_matrix = eye(N_BS);
@@ -83,7 +83,7 @@ for m = 1:M
         end
     end
 end
-for m = 1:M
+for m = 1:M_sectors
     for k = 1:K_FWA
         if ismember(m,Serv{k}) && ~ismember(k,set_repeat) 
             dl_mmse_precoder_FWA(m,k,:,:) = reshape(dl_mmse_precoder_FWA(m,k,:,:),[N_BS,N_CPE_FWA])./sqrt(scaling_LP_mmse(m,k));
@@ -95,8 +95,8 @@ for m = 1:M
         end
     end
 end
-eta_eq = zeros(M,K);
-for m = 1:M
+eta_eq = zeros(M_sectors,K);
+for m = 1:M_sectors
     term = 0;
     for k = 1:K
         if ismember(m,Serv{k})
@@ -117,14 +117,14 @@ end
 for k = 1:K_FWA
     if ~ismember(k,set_repeat) 
         for q = 1:K_FWA
-            for m = 1:M
+            for m = 1:M_sectors
                 if ismember(m,Serv{q}) && ~ismember(q,set_repeat) 
                     D_FWA_FWA(k,q,:,:) = reshape(D_FWA_FWA(k,q,:,:),[N_CPE_FWA,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA])'*reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
                 end
             end
         end
         for q = 1:K-K_FWA
-            for m = 1:M
+            for m = 1:M_sectors
                 if ismember(m,Serv{q+K_FWA})
                     D_FWA_Cell(k,q,:,:) = reshape(D_FWA_Cell(k,q,:,:),[N_CPE_FWA,N_UE]) + sqrt(p_d*eta_eq(m,q+K_FWA))*reshape(channel_dl_FWA(m,k,:,:),[N_BS,N_CPE_FWA])'*reshape(dl_mmse_precoder(m,q,:,:),[N_BS,N_UE]);
                 end
@@ -134,14 +134,14 @@ for k = 1:K_FWA
 end
 for k = 1:K-K_FWA
     for q = 1:K_FWA
-        for m = 1:M
+        for m = 1:M_sectors
             if ismember(m,Serv{q}) && ~ismember(q,set_repeat) 
                 D_Cell_FWA(k,q,:,:) = reshape(D_Cell_FWA(k,q,:,:),[N_UE,N_CPE_FWA]) + sqrt(p_d*eta_eq(m,q))*reshape(channel_dl(m,k,:,:),[N_BS,N_UE])'*reshape(dl_mmse_precoder_FWA(m,q,:,:),[N_BS,N_CPE_FWA]);
             end
         end
     end
     for q = 1:K-K_FWA
-        for m = 1:M
+        for m = 1:M_sectors
             if ismember(m,Serv{q+K_FWA})
                 D_Cell_Cell(k,q,:,:) = reshape(D_Cell_Cell(k,q,:,:),[N_UE,N_UE]) + sqrt(p_d*eta_eq(m,q+K_FWA))*reshape(channel_dl(m,k,:,:),[N_BS,N_UE])'*reshape(dl_mmse_precoder(m,q,:,:),[N_BS,N_UE]);
             end
