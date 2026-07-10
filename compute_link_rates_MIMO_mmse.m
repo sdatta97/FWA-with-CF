@@ -8,11 +8,7 @@ N_BS = size(channel_dl,3);
 N_CPE_FWA = size(channel_dl_FWA,4);
 N_UE = size(channel_dl,4);
 p_d = params.rho_tot; % 1*K;
-if params.FWA_REPEAT
-    D_FWA = params.D_FWA;
-else
-    D_FWA = params.D;
-end
+D_FWA = params.D_FWA;
 set_repeat = params.set_repeat;
 SI_cancel_factor = params.SI_cancel_factor;
 if params.HW_IMPAIRMENTS

@@ -55,7 +55,6 @@ params.num_antennas_per_gNB = 64;
 params.rho_tot = 10^(0.1*49); %BS Tx power 49 dBm per sector, per the SMa calibration
                               %assumptions of TR 38.901 clause 7.8 (ETSI TR 138 901 V19.2.0)
 params.CELL_REPEAT = 1;
-params.FWA_REPEAT = 1;
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -103,10 +102,19 @@ params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
 SI_cancel_arr = 0; %-20:5:0; %SI cancellation factor sweep (dB) for the FWA phase;
                    %set to -20:5:0 to reproduce the retired SE_comparison.m experiment
 params.HW_IMPAIRMENTS = 1;  % 1 = hardware impairments on, 0 = ideal hardware
-params.Kt = 0.9;            % transmitter impairment factor (1 = ideal)
-params.Kr = 0.9;            % receiver impairment factor (1 = ideal)
-params.Kt_rep = 0.9;        % repeater transmit-chain impairment factor (1 = ideal)
-params.Kr_rep = 0.9;        % repeater receive-chain impairment factor (1 = ideal)
+%EVM-based impairment factors: an error vector magnitude of e turns a
+%fraction e^2 of the signal power into distortion, so K = 1 - e^2.
+%3GPP minimum signal quality: BS transmit EVM 3.5% for 256QAM / 8% for
+%64QAM, TS 38.104 Table 6.5.2-1 (https://www.etsi.org/deliver/etsi_ts/138100_138199/138104/);
+%UE EVM uses the same classes (TS 38.101-1); NR repeater conformance
+%reuses them too (TS 38.115-2, https://www.etsi.org/deliver/etsi_ts/138100_138199/13811502/17.03.00_60/ts_13811502v170300p.pdf;
+%RF requirements in TS 38.106). 256QAM-grade (3.5%) is assumed for the
+%BS transmit chain, 64QAM-grade (8%) for the UE receive chain and for
+%each half of the repeater amplify-and-forward chain.
+params.Kt = 1 - 0.035^2;    % BS transmit chain, 256QAM EVM 3.5% (TS 38.104)
+params.Kr = 1 - 0.08^2;     % UE receive chain, 64QAM-grade EVM 8%
+params.Kt_rep = 1 - 0.08^2; % repeater transmit chain, EVM 8% (TS 38.115-2)
+params.Kr_rep = 1 - 0.08^2; % repeater receive chain, EVM 8% (TS 38.115-2)
 params.IMPERFECT_CSI = 1;   % 1 = beamforming uses MMSE channel estimates from noisy
                             %     CSI-RS observations, 0 = perfect CSI
 params.csi_rs_offset_dB = 0;% CSI-RS EPRE relative to PDSCH EPRE (powerControlOffset,
@@ -322,51 +330,6 @@ for idxBSDensity = 1:length(lambda_BS)
                             end
                             [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
                             K_FWA_max = sum(FWA_util>0);
-                            REPEAT = params.FWA_REPEAT && (K_FWA_max < K_FWA);  
-                            if REPEAT
-                                %enable at most num_repeater_tot repeaters in
-                                %total: CPEs already converted (rate-cap
-                                %exceeders) count towards the budget; the
-                                %remainder is chosen to maximise coverage:
-                                %every CPE outside the forced set votes for
-                                %the candidate repeater it would associate
-                                %with (donor x service metric through its
-                                %serving sector), and the most-voted
-                                %candidates are enabled
-                                forced_repeat = params.set_repeat(:);
-                                candidates = setdiff(find(FWA_util>0), forced_repeat);
-                                n_extra = max(params.num_repeater_tot - numel(forced_repeat), 0);
-                                votes = zeros(numCPE_tot,1);
-                                for kCPE = setdiff(1:numCPE_tot, forced_repeat')
-                                    m_serv = find(D_FWA(:,kCPE)==1,1);
-                                    v_rep = BETA_FWA_assoc(m_serv,:)'.*params.rep_donor_gain(m_serv,:)'.*params.BETA_interUE(1:numCPE_tot,kCPE);
-                                    v_rep(setdiff(1:numCPE_tot,candidates)) = -Inf;
-                                    v_rep(kCPE) = -Inf;
-                                    [v_best,best_rep] = max(v_rep);
-                                    %v_best = 0 means no same-donor-sector candidate
-                                    %(BETA_FWA_assoc is masked by D_FWA): no vote
-                                    if isfinite(v_best) && v_best > 0
-                                        votes(best_rep) = votes(best_rep) + 1;
-                                    end
-                                end
-                                [~,vote_order] = sort(votes(candidates),'descend');
-                                CPE_idxs = candidates(vote_order(1:min(n_extra,numel(candidates))));
-                                params.set_repeat = [forced_repeat; CPE_idxs(:)];
-                                not_set_repeat = setdiff(1:numCPE_tot,params.set_repeat);
-                                if (numel(CPE_idxs) > 0)
-                                    current_min_rate = min(mean_rate_dl_FWA(CPE_idxs));
-                                    rate_dl(union(CPE_idxs,not_set_repeat),:) = rate_dl(union(CPE_idxs,not_set_repeat),:)*params.r_min_FWA/current_min_rate;
-                                    mean_rate_dl_FWA(union(CPE_idxs,not_set_repeat)) = mean(rate_dl(union(CPE_idxs,not_set_repeat),:),2);
-                                    params.Band = params.Band*(1-(params.r_min_FWA/current_min_rate));
-                                    for n = 1:nbrOfRealizations
-                                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);                        
-                                        rate_dl(:,n) = compute_link_rates_MIMO_mmse_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);                                          
-                                    end
-                                    mean_rate_dl_FWA(not_set_repeat) = mean_rate_dl_FWA(not_set_repeat) + mean(rate_dl(not_set_repeat,:),2);
-                                    [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
-                                    K_FWA_max = sum(FWA_util>0);
-                                end
-                            end
                         end
                         sum_FWA_rate = sum(mean_rate_dl_FWA);
                         params.CPE_locations = CPE_locations;
