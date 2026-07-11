@@ -84,11 +84,23 @@ W_street = params.W_street;  %average street width W (m)
 d_clutter = 30;
 h_com = 20; h_res = 8; h_veg = 15;
 r_com = 0.02; r_res = 0.18; r_veg = params.r_vegetation;
-%O2I building penetration, low-loss residential model (Clause 7.4.3.1)
+%O2I building penetration (Clause 7.4.3.1): low-loss (traditional) and
+%high-loss (thermally efficient, metal-coated IRR glass) building models.
+%The mix is a simulation parameter (params.high_loss_ratio); ITU-R
+%M.2412 evaluations use 20% high / 80% low loss in Dense Urban eMBB and
+%100% low loss in Rural eMBB
 L_glass = 2 + 0.2*fc_GHz;
+L_IRRglass = 23 + 0.3*fc_GHz;
 L_concrete = 5 + 4*fc_GHz;
 PL_tw = 5 - 10*log10(0.3*10^(-L_glass/10) + 0.7*10^(-L_concrete/10));
 sigma_P = 4.4;
+PL_tw_high = 5 - 10*log10(0.7*10^(-L_IRRglass/10) + 0.3*10^(-L_concrete/10));
+sigma_P_high = 6.5;
+if isfield(params,'high_loss_ratio')
+    high_loss_ratio = params.high_loss_ratio;
+else
+    high_loss_ratio = 0;
+end
 %SMa LOS pathloss below the breakpoint (Table 7.4.1-1); PL2 above the
 %breakpoint is PL1 evaluated at d_BP plus 40log10(d3D/d_BP)
 PL1_SMa = @(d3D) 20*log10(40*pi*d3D*fc_GHz/3) + min(0.03*h_bldg^1.72,10)*log10(d3D) ...
@@ -173,7 +185,12 @@ else
                 hUT(k) = 1.5;
             end
             d2Din = min(10*rand, 10*rand); %residential depth: min of two U(0,10) m
-            O2IdB(k) = PL_tw + 0.5*d2Din + sigma_P*randn;
+            if rand < high_loss_ratio
+                %thermally-efficient (high-loss) building
+                O2IdB(k) = PL_tw_high + 0.5*d2Din + sigma_P_high*randn;
+            else
+                O2IdB(k) = PL_tw + 0.5*d2Din + sigma_P*randn;
+            end
         end
     end
 end

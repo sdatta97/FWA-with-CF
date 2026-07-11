@@ -78,23 +78,40 @@ for k = 1:K-K_FWA
         Rep{k} = servingCPEs(isfinite(vmax));
     end
 end
-%Repeater-path component of every sector-to-UE channel, computed once:
-%H_rep(m,k,:,n) = sum over UE k's repeaters of (BS m -> repeater) x donor
-%gain x repeater gain x (repeater -> UE k). The composite channel used
-%for beams, DS/MSI, and interference is channel_dl + H_rep.
+%Repeater-path component of every sector-to-UE channel, computed once.
+%The NCR applies rank-1 amplify-and-forward BEAMFORMING (TR 38.867 side
+%control enables "transmissions and receptions with improved spatial
+%directivity"): a donor RECEIVE beam w_r matched to its donor-sector
+%link, and a service TRANSMIT beam w_t matched to the assisted user's
+%link (per-user on that user's OFDMA resources). Both beams are selected
+%from the ESTIMATED channels and applied to the true and estimated
+%composites alike. The donor beam gives the donor sector full array gain
+%while other sectors' signals land on an (almost) uncorrelated beam, so
+%the repeater's input SIR improves by the array factor instead of the
+%repeater re-radiating the raw interference mix:
+%H_rep(m,k,:,n) = sum over UE k's repeaters of
+%  (BS m -> repeater)*w_r x donor gain x repeater gain x w_t'(rep -> UE k)
 H_rep = zeros(M_sectors,K-K_FWA,N_BS,N_UE);
-%estimated counterpart, built from the ESTIMATED BS-to-repeater and
-%repeater-to-UE channels; used only for beamforming (imperfect CSI)
+%estimated counterpart, used only for the gNB beamforming (imperfect CSI)
 H_rep_est = zeros(M_sectors,K-K_FWA,N_BS,N_UE);
 for k = 1:K-K_FWA
     for kk = 1:numel(Rep{k})
         rep_idx = Rep{k}(kk);
+        m_donor = donor_of(rep_idx);
+        Hd_est = reshape(channel_est_dl_FWA(m_donor,rep_idx,:,:),[N_BS,N_CPE_FWA]);
+        [~,~,Vr] = svd(Hd_est,'econ');
+        w_r = Vr(:,1);   %donor receive beam (dominant donor-link direction)
+        Hs_est = reshape(channel_interFWA_est(rep_idx,k+K_FWA,:,1:N_UE),[N_CPE_FWA,N_UE]);
+        [~,~,Vt] = svd(Hs_est.','econ');
+        w_t = Vt(:,1);   %service transmit beam towards assisted UE k
         for m = 1:M_sectors
-            G = reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain_amp(rep_idx);
-            G_est = reshape(channel_est_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*rep_donor_amp(m,rep_idx)*rep_gain_amp(rep_idx);
+            g_vec = reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*w_r*rep_donor_amp(m,rep_idx)*rep_gain_amp(rep_idx);
+            g_vec_est = reshape(channel_est_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*w_r*rep_donor_amp(m,rep_idx)*rep_gain_amp(rep_idx);
             for n = 1:N_UE
-                H_rep(m,k,:,n) = reshape(H_rep(m,k,:,n),[N_BS,1]) + G*reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);
-                H_rep_est(m,k,:,n) = reshape(H_rep_est(m,k,:,n),[N_BS,1]) + G_est*reshape(channel_interFWA_est(rep_idx,k+K_FWA,:,n),[N_CPE_FWA,1]);
+                s_n = reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[1,N_CPE_FWA])*w_t;
+                s_n_est = reshape(channel_interFWA_est(rep_idx,k+K_FWA,:,n),[1,N_CPE_FWA])*w_t;
+                H_rep(m,k,:,n) = reshape(H_rep(m,k,:,n),[N_BS,1]) + g_vec*s_n;
+                H_rep_est(m,k,:,n) = reshape(H_rep_est(m,k,:,n),[N_BS,1]) + g_vec_est*s_n_est;
             end
         end
     end
@@ -107,8 +124,10 @@ H_comp_est = channel_est_dl + H_rep_est; %estimated composites, for beamforming 
 %DS/MSI beams and the beamformed inter-sector interference, averaged over
 %the interferer's scheduled set (round-robin OFDMA)
 W = cell(M_sectors,1);
+W_dir = cell(M_sectors,1); %direct-channel beams, for the NCR-OFF variant
 for m = 1:M_sectors
     W{m} = beamMatrix(H_comp_est,m,U{m},N_BS,N_UE);
+    W_dir{m} = beamMatrix(channel_est_dl,m,U{m},N_BS,N_UE);
 end
 
 %% Computing rates
@@ -122,46 +141,98 @@ for k = 1:K-K_FWA
     m = Serv{k};
     share = BW/sectorLoad(m);
     W_own = W{m}; U_own = U{m};
+    W_dir_own = W_dir{m};
     int_sectors = setdiff(1:M_sectors,m); %reuse 1: every other sector interferes
+    %NCR-OFF (pure direct path) rate, evaluated for every UE: for UEs
+    %without an attached repeater this IS their rate; for attached UEs it
+    %is the side-control alternative. With the NCR not forwarding on this
+    %UE's resources there is no re-amplified interference either.
+    rate_off = 0;
     for n = 1:N_UE
-        %receive channel of UE k split into direct and repeater-path
-        %components: the useful signal keeps only sqrt(K_rep_hw) of the
-        %repeater branch, the rest becomes repeater hardware distortion
-        eff_dir = reshape(channel_dl(m,k,:,n),N_BS,1);
-        eff_rep = reshape(H_rep(m,k,:,n),N_BS,1);
-        eff_channel = eff_dir + eff_rep;            %composite (true)
-        eff_sig = eff_dir + sqrt(K_rep_hw)*eff_rep; %coherent part after repeater HI
-        w_n = getBeam(W_own,U_own,k,n,N_UE);
-        ds_base = p_d*abs(eff_sig'*w_n)^2;
-        DS_dl(k,n) = Kr*Kt*ds_base;
-        HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*ds_base ...
-                   + (1-K_rep_hw)*p_d*abs(eff_rep'*w_n)^2;
+        h_n = reshape(channel_dl(m,k,:,n),N_BS,1);
+        w_n = getBeam(W_dir_own,U_own,k,n,N_UE);
+        ds_base = p_d*abs(h_n'*w_n)^2;
+        DS_off = Kr*Kt*ds_base;
+        HI_off = (1-Kr*Kt)*ds_base;
+        MSI_off = 0;
         for nn = 1:N_UE
             if (nn~=n)
-                nn_eff_channel = reshape(H_comp(m,k,:,nn),N_BS,1);
-                if (norm(nn_eff_channel,'fro') < norm(eff_channel,'fro'))
-                    w_nn = getBeam(W_own,U_own,k,nn,N_UE);
-                    msi_base = p_d*abs(eff_sig'*w_nn)^2;
-                    MSI_dl(k,n) = Kr*Kt*msi_base;
-                    HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*msi_base ...
-                               + (1-K_rep_hw)*p_d*abs(eff_rep'*w_nn)^2;
+                h_nn = reshape(channel_dl(m,k,:,nn),N_BS,1);
+                if (h_nn'*h_nn < h_n'*h_n)
+                    msi_base = p_d*abs(h_n'*getBeam(W_dir_own,U_own,k,nn,N_UE))^2;
+                    MSI_off = Kr*Kt*msi_base;
+                    HI_off = HI_off + (1-Kr*Kt)*msi_base;
                 end
             end
         end
-        %inter-sector (co-channel) interference with the interferers'
-        %actual beamforming towards their own scheduled UEs; the victim's
-        %interference channel includes its repeaters re-amplifying the
-        %interfering sector's signal (donor gain towards that sector)
         mci_base = 0;
         for mm = int_sectors
             if ~isempty(W{mm})
-                h_int = reshape(H_comp(mm,k,:,n),N_BS,1);
+                h_int = reshape(channel_dl(mm,k,:,n),N_BS,1);
                 mci_base = mci_base + p_d*mean(abs(h_int'*W{mm}).^2);
             end
         end
-        MCI_dl(k,n) = Kr*Kt*mci_base;
-        HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*mci_base;
-        rate_dl(k) = rate_dl(k) + share*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
+        MCI_off = Kr*Kt*mci_base;
+        HI_off = HI_off + (1-Kr*Kt)*mci_base;
+        DS_dl(k,n) = DS_off; MSI_dl(k,n) = MSI_off;
+        MCI_dl(k,n) = MCI_off; HI_dl(k,n) = HI_off;
+        rate_off = rate_off + share*TAU_FAC*log2(1+DS_off/(MSI_off+MCI_off+HI_off+noise_dl(k,n)));
+    end
+    rate_dl(k) = rate_off;
+    if ~isempty(Rep{k})
+        %NCR-ON (repeater composite) rate. Benefit-gated side control
+        %(TR 38.867): the gNB keeps the better of ON/OFF per UE, since an
+        %AF repeater substitutes a rank-1, interference-inheriting path
+        %for the direct MIMO link and only pays off in coverage holes.
+        %Cross-UE coupling through the interferers' beam matrices is
+        %neglected in the OFF evaluation (measured < 1% of a UE's rate).
+        rate_on = 0;
+        DS_on = zeros(1,N_UE); MSI_on = zeros(1,N_UE);
+        MCI_on = zeros(1,N_UE); HI_on = zeros(1,N_UE);
+        for n = 1:N_UE
+            %receive channel split into direct and repeater-path parts:
+            %the useful signal keeps only sqrt(K_rep_hw) of the repeater
+            %branch, the rest becomes repeater hardware distortion
+            eff_dir = reshape(channel_dl(m,k,:,n),N_BS,1);
+            eff_rep = reshape(H_rep(m,k,:,n),N_BS,1);
+            eff_channel = eff_dir + eff_rep;            %composite (true)
+            eff_sig = eff_dir + sqrt(K_rep_hw)*eff_rep; %coherent part after repeater HI
+            w_n = getBeam(W_own,U_own,k,n,N_UE);
+            ds_base = p_d*abs(eff_sig'*w_n)^2;
+            DS_on(n) = Kr*Kt*ds_base;
+            HI_on(n) = HI_on(n) + (1-Kr*Kt)*ds_base ...
+                     + (1-K_rep_hw)*p_d*abs(eff_rep'*w_n)^2;
+            for nn = 1:N_UE
+                if (nn~=n)
+                    nn_eff_channel = reshape(H_comp(m,k,:,nn),N_BS,1);
+                    if (norm(nn_eff_channel,'fro') < norm(eff_channel,'fro'))
+                        w_nn = getBeam(W_own,U_own,k,nn,N_UE);
+                        msi_base = p_d*abs(eff_sig'*w_nn)^2;
+                        MSI_on(n) = Kr*Kt*msi_base;
+                        HI_on(n) = HI_on(n) + (1-Kr*Kt)*msi_base ...
+                                 + (1-K_rep_hw)*p_d*abs(eff_rep'*w_nn)^2;
+                    end
+                end
+            end
+            %inter-sector interference with the interferers' actual
+            %beamforming; the victim's interference channel includes its
+            %repeater re-amplifying the interfering sector's signal
+            mci_base = 0;
+            for mm = int_sectors
+                if ~isempty(W{mm})
+                    h_int = reshape(H_comp(mm,k,:,n),N_BS,1);
+                    mci_base = mci_base + p_d*mean(abs(h_int'*W{mm}).^2);
+                end
+            end
+            MCI_on(n) = Kr*Kt*mci_base;
+            HI_on(n) = HI_on(n) + (1-Kr*Kt)*mci_base;
+            rate_on = rate_on + share*TAU_FAC*log2(1+DS_on(n)/(MSI_on(n)+MCI_on(n)+HI_on(n)+noise_dl(k,n)));
+        end
+        if rate_on > rate_off
+            rate_dl(k) = rate_on;
+            DS_dl(k,:) = DS_on; MSI_dl(k,:) = MSI_on;
+            MCI_dl(k,:) = MCI_on; HI_dl(k,:) = HI_on;
+        end
     end
 end
 end

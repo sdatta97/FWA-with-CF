@@ -84,6 +84,13 @@ params.h_bldg = 10; %average building height h (m), SMa default
 params.W_street = 10; %average street width W (m), SMa default
 params.r_vegetation = 0.10; %vegetation clutter density: 0 none, 0.10 sparse, 0.20 dense
 params.indoor_UT_ratio = 0.8; %fraction of cellular UEs indoors (Table 7.2-5)
+params.high_loss_ratio = 0.2; %fraction of indoor UEs in HIGH-LOSS (thermally
+       %efficient, metal-coated IRR glass) buildings, TR 38.901 Clause
+       %7.4.3.1; the mix is a simulation parameter, set to the ITU-R
+       %M.2412 Dense Urban eMBB evaluation value (20% high / 80% low
+       %loss; Rural eMBB uses 100% low loss). High-loss adds ~15 dB of
+       %O2I penetration at 3.7 GHz, creating the coverage holes that
+       %NCRs are designed to fill (TR 38.867)
 lambda_BS = 5;
 lambda_SC = 0; %no small cells (kept for the result-file format)
 %Active-user densities (busy-hour CONCURRENTLY ACTIVE UEs, not
