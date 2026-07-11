@@ -55,9 +55,9 @@ params.num_antennas_per_gNB = 64;
 params.rho_tot = 10^(0.1*49); %BS Tx power 49 dBm per sector, per the SMa calibration
                               %assumptions of TR 38.901 clause 7.8 (ETSI TR 138 901 V19.2.0)
 params.CELL_REPEAT = 1;
-params.TEMPORAL_MOBILITY = 0; %1 = evolve UE positions/large-scale state across
-                              %snapshots (used by PackingAnalysis.m); this script
-                              %draws one static setup per seed, so this stays off
+params.TEMPORAL_MOBILITY = 1; %1 = cellular UEs move along trajectories and the
+                              %large-scale state evolves across snapshots (see the
+                              %mobility model below); 0 = one static setup per seed
 %Number of antennas per UE
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
@@ -146,8 +146,31 @@ params.num_repeater_per_cpe = 1; %repeaters associated per served user (fixed, n
 params.rep_assist_frac = 0.2;    %fraction of each sector's WEAKEST cellular UEs (cell edge,
                                  %by serving-link large-scale gain) eligible for repeater
                                  %assistance; the rest keep the pure direct path
-%Number of channel realizations per setup
-params.nbrOfRealizations = 10;
+%Three layers of randomness, averaged per SLURM array task:
+%  (1) the seed aID fixes the DROP: gNB/CPE/UE locations and the initial
+%      large-scale state;
+%  (2) nbrOfSnapshots units of MOBILITY: the cellular UEs advance
+%      dt_snap along their trajectories and the large-scale state
+%      (shadowing, LOS, association) evolves consistently. Motion model:
+%      straight-line constant speed with a random heading per user
+%      (Random Direction model: Camp, Boleng & Davies, WCMC 2002,
+%      https://onlinelibrary.wiley.com/doi/10.1002/wcm.72), the 3GPP /
+%      ITU-R M.2412 evaluation convention; road UEs at 40 km/h in the
+%      outer ring follow the straight-segment core of the Freeway
+%      highway model (Bai, Sadagopan & Helmy, IEEE INFOCOM 2003,
+%      https://ieeexplore.ieee.org/document/1208920), indoor UEs walk at
+%      3 km/h inside the complex (TR 38.901 Table 7.2-5 speeds), with
+%      specular reflection at the region boundaries;
+%  (3) nbrOfRealizations fading / noise / CSI-error realizations per
+%      snapshot (within a snapshot the CSI-lag Jakes channel aging
+%      applies).
+%Cellular statistics average over layers 2 x 3. The FWA CPEs are
+%stationary (no mobility layer): they average over
+%nbrOfSnapshots*nbrOfRealizations fading draws, so both services rest on
+%the same sample count.
+params.nbrOfSnapshots = 5;     %mobility units per seed (layer 2)
+params.nbrOfRealizations = 10; %fading realizations per snapshot (layer 3)
+params.dt_snap = 1;            %time between mobility snapshots (s)
 
 %Minimum guaranteed FWA rate per subscriber-plan tier (swept). Values
 %span the US 5G-FWA plan landscape (Q4 2024): 50 Mbps entry floor,
@@ -210,7 +233,7 @@ for idxBSDensity = 1:length(lambda_BS)
         params.numCPE = numCPE_tot;
         params.CPE_locations = CPE_locations;
         params.Band = Band; %Communication bandwidth
-        [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs,isIndoor,hUT,O2IdB,repDonorGaindB] = generateSetup(params,str2double(aID));
+        [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesCPEs,isIndoor,hUT,O2IdB,repDonorGaindB,mobState] = generateSetup(params,str2double(aID));
         params.rep_donor_gain = db2pow(repDonorGaindB); %donor-side repeater sector antenna gain (linear power, M_sectors x K_FWA)
         params.gainOverNoise_lin = db2pow(gainOverNoisedB); %BS-to-user large-scale gain (linear), single source of truth
         %Total downlink power arriving at each repeater's donor panel (mW),
@@ -225,6 +248,56 @@ for idxBSDensity = 1:length(lambda_BS)
         v_ue(isIndoor(numCPE_tot+1:end)) = params.ue_velocity_indoor;
         params.mob_rho = besselj(0,2*pi*params.Ts*v_ue*params.fc/params.c);
         params.BETA_interUE = db2pow(gainOverNoisedB_ue);
+        %% Trajectory of the cellular UEs (randomness layer 2)
+        %The per-snapshot large-scale states are generated ONCE per seed,
+        %before the repeater sweep, so every num_rep value sees the same
+        %motion. Only the small gain/association matrices are stored; the
+        %spatial correlation tensors (scaled identities) are rebuilt per
+        %snapshot in the cell phase. The FWA CPEs have zero displacement,
+        %so their rows/columns are frozen exactly by the evolution.
+        nbrOfSnapshots = params.nbrOfSnapshots;
+        nbrOfRealizations = params.nbrOfRealizations;
+        snapGain = cell(nbrOfSnapshots,1);
+        snapGainUE = cell(nbrOfSnapshots,1);
+        snapDcell = cell(nbrOfSnapshots,1);
+        snapGain{1} = gainOverNoisedB;
+        snapGainUE{1} = gainOverNoisedB_ue;
+        snapDcell{1} = D_cell;
+        if params.TEMPORAL_MOBILITY && nbrOfSnapshots > 1
+            UEpos_t = UE_locations(:,1) + 1i*UE_locations(:,2);
+            siteCenterUE = repelem(siteLocations(:,1) + 1i*siteLocations(:,2), S*numUE, 1);
+            v_move = params.ue_velocity_outdoor*ones(M_sectors*numUE,1);
+            v_move(isIndoorUE) = params.ue_velocity_indoor;
+            heading = 2*pi*rand(M_sectors*numUE,1);
+            r_lo = params.min_dist_2D*ones(M_sectors*numUE,1); r_lo(~isIndoorUE) = params.complexRadius;
+            r_hi = params.complexRadius*ones(M_sectors*numUE,1); r_hi(~isIndoorUE) = params.deployRange;
+            for t_snap = 2:nbrOfSnapshots
+                %advance by dt_snap; specular reflection keeps each user
+                %inside its motion region (annulus around its site)
+                UEpos_t = UEpos_t + v_move*params.dt_snap.*exp(1i*heading);
+                r = abs(UEpos_t - siteCenterUE);
+                out = (r > r_hi) | (r < r_lo);
+                if any(out)
+                    u = exp(1i*heading(out));
+                    nvec = (UEpos_t(out) - siteCenterUE(out))./max(r(out),1e-9);
+                    u_ref = u - 2*real(u.*conj(nvec)).*nvec;
+                    heading(out) = angle(u_ref);
+                    r_cl = min(max(r(out), r_lo(out)), r_hi(out));
+                    UEpos_t(out) = siteCenterUE(out) + r_cl.*nvec;
+                end
+                params.UE_locations = [real(UEpos_t), imag(UEpos_t)];
+                %seed 0: the RNG stream continues across snapshots
+                [snapGain{t_snap},snapGainUE{t_snap},~,~,~,~,~,~,snapDcell{t_snap},~,~,~,~,~,~,~,~,mobState] = generateSetup(params,0,mobState);
+            end
+            params.UE_locations = UE_locations; %restore the drop positions
+        else
+            %static mode: every snapshot reuses the drop's setup
+            for t_snap = 2:nbrOfSnapshots
+                snapGain{t_snap} = gainOverNoisedB;
+                snapGainUE{t_snap} = gainOverNoisedB_ue;
+                snapDcell{t_snap} = D_cell;
+            end
+        end
         for idxnumrep = 1:length(num_rep_arr)  
             for idxrepgain = 1:length(rep_gain_arr)
                 params.repeat_gain = rep_gain_arr(idxrepgain); %G_max (dB), recorded in the CSV
@@ -255,35 +328,61 @@ for idxBSDensity = 1:length(lambda_BS)
                 K_FWA = params.numCPE;
                 params.numUE = numUE;
                 K = params.numCPE + M_sectors*params.numUE; 
+                %Cell phase: mobility snapshots (layer 2) x fading
+                %realizations (layer 3); the per-snapshot correlation
+                %tensors are rebuilt from the stored gains
+                rate_dl = zeros(K-K_FWA,nbrOfSnapshots*nbrOfRealizations);
                 if params.CELL_REPEAT
                     params.D_FWA = D_FWA;
-                    params.D_cell = D_cell;
-                    params.R_gNB = R_gNB;
                     params.R_cpe = R_cpe;
-                    params.R_interue = R_interue;
                     params.R_ue = R_ue; 
-                    nbrOfRealizations = params.nbrOfRealizations;
-                    rate_dl = zeros(K-K_FWA,nbrOfRealizations);
-                    for n = 1:nbrOfRealizations
-                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-                        rate_dl(:,n) = compute_link_rates_OFDM_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);         
+                    for t_snap = 1:nbrOfSnapshots
+                        params.gainOverNoise_lin = db2pow(snapGain{t_snap});
+                        params.BETA_interUE = db2pow(snapGainUE{t_snap});
+                        params.D_cell = snapDcell{t_snap};
+                        [params.R_gNB, params.R_interue] = rebuildCorrMatrices(snapGain{t_snap},snapGainUE{t_snap},params.num_antennas_per_gNB,params.N_UE_FWA,numCPE_tot);
+                        for n = 1:nbrOfRealizations
+                            [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+                            rate_dl(:,(t_snap-1)*nbrOfRealizations+n) = compute_link_rates_OFDM_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);         
+                        end
                     end
                 else
                     params.numCPE = 0;
                     params.CPE_locations = [];
-                    params.D = D_cell;
-                    params.R_gNB = R_gNB(:,:,:,1+numCPE_tot:end);
                     params.R_cpe = [];
                     params.R_interue = [];
                     params.R_ue = R_ue; 
-                    nbrOfRealizations = params.nbrOfRealizations;
-                    rate_dl = zeros(K-K_FWA,nbrOfRealizations);
-                    for n = 1:nbrOfRealizations
-                        [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-                        rate_dl(:,n) = compute_link_rates_OFDM(params, channel_dl, channel_est_dl);         
+                    for t_snap = 1:nbrOfSnapshots
+                        params.gainOverNoise_lin = db2pow(snapGain{t_snap});
+                        params.BETA_interUE = db2pow(snapGainUE{t_snap});
+                        params.D = snapDcell{t_snap};
+                        [R_gNB_t, ~] = rebuildCorrMatrices(snapGain{t_snap},snapGainUE{t_snap},params.num_antennas_per_gNB,params.N_UE_FWA,numCPE_tot);
+                        params.R_gNB = R_gNB_t(:,:,:,1+numCPE_tot:end);
+                        for n = 1:nbrOfRealizations
+                            [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+                            rate_dl(:,(t_snap-1)*nbrOfRealizations+n) = compute_link_rates_OFDM(params, channel_dl, channel_est_dl);         
+                        end
                     end
                 end
+                %restore the snapshot-1 (drop) state for the FWA phase; the
+                %CPE rows/columns are identical in every snapshot anyway
+                params.gainOverNoise_lin = db2pow(snapGain{1});
+                params.BETA_interUE = db2pow(snapGainUE{1});
                 mean_rate_dl_cell = mean(rate_dl,2);
+                %Raw per-user x per-(snapshot x realization) cellular rates
+                %for the packing-analysis figure (dataProcess/combineData.m);
+                %the safe-load fraction f = q_eps/mean is bandwidth-scale-
+                %invariant, so these full-band rates suffice
+                packFolder = 'resultData/FWA_packing_analysis';
+                if not(isfolder(packFolder))
+                    mkdir(packFolder)
+                end
+                if params.CELL_REPEAT
+                    cellTag = 'packing_cell_rep_';
+                else
+                    cellTag = 'packing_cell_plain_';
+                end
+                writematrix(rate_dl, strcat(packFolder,'/',cellTag,num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
                 if (quantile(mean_rate_dl_cell,params.loss_pc_cell)>=params.r_min_cell)
                     params.Band = max(params.Band*(1-params.r_min_cell/quantile(mean_rate_dl_cell,params.loss_pc_cell)),0);
                     if (params.Band > 0)
@@ -312,14 +411,23 @@ for idxBSDensity = 1:length(lambda_BS)
                     params.R_interue = R_interue(:,:,1:numCPE_tot,1:numCPE_tot);
                     params.R_ue = []; 
                     params.set_repeat = [];
-                    rate_dl = zeros(K,nbrOfRealizations);
-                    for n = 1:nbrOfRealizations
+                    %stationary CPEs: no mobility layer; the fading draw
+                    %count matches the cellular sample count (layers 2 x 3)
+                    nbrFWADraws = nbrOfSnapshots*nbrOfRealizations;
+                    rate_dl = zeros(K,nbrFWADraws);
+                    for n = 1:nbrFWADraws
                         [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
                         rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
                     end
                     mean_rate_dl_FWA = mean(rate_dl,2);
                     save_old_rate = rate_dl;
                     save_old_mean_FWA = mean_rate_dl_FWA;
+                    if idxSI == 1 && params.Band > 0
+                        %raw FWA packing matrix (skipped if the cell phase
+                        %consumed the whole band: all-zero rates carry no
+                        %distribution information)
+                        writematrix(rate_dl, strcat(packFolder,'/packing_FWA_',num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
+                    end
                     Band_FWA = params.Band;
                     for idxrmin = 1:length(r_min_arr)
                         params.r_min_FWA = r_min_arr(idxrmin);
@@ -335,7 +443,7 @@ for idxBSDensity = 1:length(lambda_BS)
                                 mean_rate_dl_FWA(CPE_idxs) = mean(rate_dl(CPE_idxs,:),2);
                                 params.set_repeat = [params.set_repeat; CPE_idxs];
                                 not_set_repeat = setdiff(1:numCPE_tot,params.set_repeat);
-                                for n = 1:nbrOfRealizations
+                                for n = 1:nbrFWADraws
                                     [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, ~, ~] = computePhysicalChannels_sub6_MIMO(params);
                                     rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
                                 end
@@ -405,4 +513,22 @@ for idxBSDensity = 1:length(lambda_BS)
     end
 end
 tEnd = toc(tStart);
-fprintf('Total runtime: %f seconds\n',tEnd) 
+fprintf('Total runtime: %f seconds\n',tEnd)
+
+function [R_gNB,R_interue] = rebuildCorrMatrices(gaindB,gainUEdB,N,N_UE_FWA,K_FWA)
+%Spatial correlation matrices under i.i.d. fading are scaled identities,
+%so they are rebuilt from a snapshot's gain matrices instead of storing
+%the N x N tensors for every mobility snapshot
+M_sectors = size(gaindB,1);
+K = size(gaindB,2);
+R_gNB = zeros(N,N,M_sectors,K);
+R_interue = zeros(N_UE_FWA,N_UE_FWA,K_FWA,K);
+for k = 1:K
+    for l = 1:M_sectors
+        R_gNB(:,:,l,k) = db2pow(gaindB(l,k))*eye(N);
+    end
+    for l = 1:K_FWA
+        R_interue(:,:,l,k) = db2pow(gainUEdB(l,k))*eye(N_UE_FWA);
+    end
+end
+end 
