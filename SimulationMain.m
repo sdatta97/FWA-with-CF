@@ -34,10 +34,10 @@ params.c = 3e8; %speed of light (m/s)
 % - mobile 5G-NR coverage benchmark 35/3 Mbps DL/UL
 % - fixed broadband benchmark 100/20 Mbps
 % - long-term fixed broadband goal 1000/500 Mbps
-%Ericsson Mobility Report (FWA): busy-hour sustained per active user ~5 Mbps
-% (https://www.ericsson.com/en/reports-and-papers/mobility-report/articles/fixed-wireless-access)
-params.r_min_cell = 10e6; %busy-hour sustained cell-UE floor (~5-10 Mbps; the FCC 35/3
-                          %figure is a coverage benchmark, not a per-user busy-hour target)
+params.r_min_cell = 35e6; %cellular DL floor at the 5th percentile: the FCC
+                          %mobile 5G-NR coverage benchmark of 35/3 Mbps DL/UL
+                          %(FCC 24-27); attainable here because the FWA/Wi-Fi
+                          %offload carries the indoor demand
 params.r_max_FWA = 1e9;   %FWA rate cap = FCC long-term fixed broadband goal (1 Gbps),
                           %also the Verizon 5G Home "Ultimate" gigabit tier
 %%
@@ -127,30 +127,37 @@ params.high_loss_ratio = 0.2; %fraction of indoor UEs in HIGH-LOSS (thermally
        %NCRs are designed to fill (TR 38.867)
 lambda_BS = 5;
 lambda_SC = 0; %no small cells (kept for the result-file format)
-%Active-user densities (busy-hour CONCURRENTLY ACTIVE UEs, not
-%subscribers), urban apartment-complex calibration. Dense urban
-%apartment areas hold ~8,000-15,000 residents/km^2 (Demographia,
-%http://demographia.com/db-intlsub.htm), consistent with the 4-8 floor
-%UMa building model; a ~5% busy-hour active share - at the high end of
-%the range because complex residents run high-data-rate home
-%applications in the busy hour - gives ~500 active UEs/km^2 in the
-%complex (sweep to 1000 for the density-sensitivity figure). THREE user
-%classes, each anchored to a standard evaluation configuration:
-% - complex INDOOR users (3 km/h, O2I loss, floor heights) and complex
-%   OUTDOOR PEDESTRIANS (3 km/h, no O2I, 1.5 m height): TR 38.901
-%   Table 7.2-1 (UMa) specifies an 80% indoor UT ratio with ALL UTs
-%   moving at 3 km/h in the horizontal plane - i.e. its outdoor users
-%   are walking-speed street users - which is exactly the complex
-%   population, split 80:20 by pedestrian_ratio;
-% - perimeter-road IN-CAR users (30 km/h): ITU-R M.2412 Dense Urban
-%   eMBB deploys "80% indoor, 20% outdoor (in-car)" with in-car users
-%   at 30 km/h (Table 5b,
-%   https://www.itu.int/dms_pub/itu-r/opb/rep/R-REP-M.2412-2017-PDF-E.pdf);
-%   the ring between and around the complexes is literally that road,
-%   at ~5x the earlier suburban in-car density.
-lambda_UE_res_arr = 500; %250:250:1000; %active UEs per km^2 in the complex
-lambda_UE_road_arr = 20; %10:10:40;     %active in-car UEs per km^2, perimeter road (paired)
-params.pedestrian_ratio = 0.2; %fraction of complex UEs outdoors as pedestrians
+%Active-user densities: GROSS busy-hour concurrently active data users
+%on ANY access network. Dense urban apartment areas hold ~8,000-15,000
+%residents/km^2 (Demographia, http://demographia.com/db-intlsub.htm),
+%consistent with the 4-8 floor UMa building model; a ~10% busy-hour
+%active share - high-data-rate applications in the evening busy hour -
+%gives ~1000 gross active users/km^2 in the complex (sweepable).
+%FWA/WI-FI OFFLOAD: indoor users in broadband-equipped buildings ride
+%the home connection (the FWA CPEs of this study), not cellular. Wi-Fi/
+%femtocell offload carries ~60% of ALL mobile data globally and 66% in
+%the US (Cisco VNI,
+%https://wballiance.com/the-cisco-visual-networking-index-vni-global-mobile-data-traffic-forecast-update-2017-2021/;
+%https://newsroom.cisco.com/c/r/newsroom/en/us/a/y2019/m02/cisco-global-mobile-networks-will-support-more-than-12-billion-mobile-devices-and-iot-connections-by-2022-mobile-traffic-approaching-the-zettabyte-mil.html),
+%concentrated at home where ~81% of US households have home internet
+%(https://insights.opensignal.com/2025/10/20/the-state-of-us-fwa-what-impact-has-att-internet-airs-launch-had/dt);
+%for indoor users of the complex an 80% offload share follows. The
+%CELLULAR-active population is therefore outdoor-dominated: all
+%pedestrians and in-car users, plus the 20% non-offloaded indoor
+%remainder - and the offloaded indoor demand IS the FWA traffic this
+%paper monetizes. THREE cellular user classes as before:
+% - complex INDOOR remainder (3 km/h, O2I loss, floor heights) and
+%   complex OUTDOOR PEDESTRIANS (3 km/h, no O2I, 1.5 m): TR 38.901
+%   Table 7.2-1 (UMa: 80% indoor ratio applies to the GROSS population,
+%   all UTs at 3 km/h);
+% - perimeter-road IN-CAR users (30 km/h): ITU-R M.2412 Dense Urban eMBB
+%   (Table 5b).
+lambda_UE_res_arr = 1000; %500:250:1500; %GROSS active users per km^2 in the complex
+lambda_UE_road_arr = 40;  %20:10:60;     %active in-car users per km^2, perimeter road (paired)
+params.pedestrian_ratio = 0.2; %fraction of complex GROSS actives outdoors as pedestrians
+params.indoor_offload = 0.8;   %fraction of indoor actives on home broadband/FWA
+                               %instead of cellular (Cisco VNI offload + US home
+                               %internet penetration, see above)
 params.Lmax = 1;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
@@ -278,8 +285,11 @@ for idxBSDensity = 1:length(lambda_BS)
         lambda_road = lambda_UE_road_arr(min(idxUEDensity,end));
         A_complex = pi*((params.complexRadius/1000)^2 - (params.min_dist_2D/1000)^2); %residential annulus (km^2)
         A_road = pi*((params.deployRange/1000)^2 - (params.complexRadius/1000)^2); %perimeter road ring (km^2)
-        numUE_cmplx = ceil(lambda_UE_res_arr(idxUEDensity)*A_complex/S); %per sector, complex (indoor + pedestrians)
-        numUE_ped = round(params.pedestrian_ratio*numUE_cmplx); %per sector, of which outdoor pedestrians
+        numUE_cmplx_gross = ceil(lambda_UE_res_arr(idxUEDensity)*A_complex/S); %per sector, GROSS active in complex (any network)
+        numUE_ped = round(params.pedestrian_ratio*numUE_cmplx_gross); %per sector, outdoor pedestrians (all cellular)
+        %indoor CELLULAR-active remainder after FWA/Wi-Fi offload
+        numUE_ind = round((1 - params.indoor_offload)*(numUE_cmplx_gross - numUE_ped));
+        numUE_cmplx = numUE_ind + numUE_ped; %cellular-active complex users
         numUE_road = ceil(lambda_road*A_road/S); %per sector, perimeter road (in-car)
         params.numUE = numUE_cmplx + numUE_road;
         numUE = params.numUE;
@@ -498,8 +508,8 @@ for idxBSDensity = 1:length(lambda_BS)
                     params.Band = 0;
                 end
                 Band_after_cell = params.Band; %band left after serving the cellular UEs
-                %SI-cancellation sweep for the FWA phase (single 0 dB value
-                %by default; the retired SE_comparison.m experiment swept it)
+                %gamma_I sweep for the FWA phase (single -20 dB value by
+                %default; see SI_cancel_arr for the sweep and citations)
                 for idxSI = 1:length(SI_cancel_arr)
                     params.SI_cancel_factor = 10^(0.1*SI_cancel_arr(idxSI));
                     params.Band = Band_after_cell;
