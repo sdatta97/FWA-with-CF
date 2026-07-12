@@ -7,7 +7,9 @@ TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
 N_CPE_FWA = size(channel_dl_FWA,4);
 N_UE = size(channel_dl,4);
-p_d = params.rho_tot; % 1*K;
+p_d = params.rho_tot; %total sector power. Constant-PSD convention: channels
+%are normalized by FULL-band noise, so p_d*|h|^2 is the PSD ratio - exact
+%on any subband; the bandwidth share enters only through the rate prelog
 D_FWA = params.D_FWA;
 set_repeat = params.set_repeat;
 SI_cancel_factor = params.SI_cancel_factor;

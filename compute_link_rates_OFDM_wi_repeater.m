@@ -7,7 +7,9 @@ TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
 N_UE = size(channel_dl,4);
 N_CPE_FWA = size(channel_dl_FWA,4);
-p_d = params.rho_tot; % 1*K;
+p_d = params.rho_tot; %total sector power. Constant-PSD convention: channels
+%are normalized by FULL-band noise, so p_d*|h|^2 is the PSD ratio - exact
+%on any subband; the bandwidth share enters only through the rate prelog
 D_FWA = params.D_FWA;
 D_cell = params.D_cell;
 BETA_interUE = params.BETA_interUE;
@@ -15,6 +17,20 @@ BETA_interUE = params.BETA_interUE;
 %amplification gain capped by the maximum output power at the repeater's
 %operating point (TR 38.867: 90 dB / 33 dBm), computed in the main script
 rep_gain_amp = params.repeat_gain_amp;
+%Number of spatial layers the NCR forwards. 1 = Rel-18 NCR (analog
+%beamforming, single amplify-and-forward chain, no digital processing:
+%Carvalho et al., "Network-controlled repeater - an introduction", IEEE
+%Comm. Standards Mag. 2026). Values > 1 model a beyond-Rel-18
+%multi-chain "MIMO-capable" repeater forwarding the top singular beam
+%pairs with the output power split equally across chains; the effective
+%rank is clamped to what the arrays and the UE can support, so setting
+%params.ncr_rank = params.N_UE_cell forwards as many layers as the
+%cellular UE has antennas (no hardcoded layer count)
+if isfield(params,'ncr_rank')
+    ncr_rank = min([params.ncr_rank, N_UE, N_CPE_FWA]);
+else
+    ncr_rank = 1;
+end
 %Donor-side sector antenna of the network-controlled repeaters: amplitude
 %gain of the CPE donor-locked sector panel towards sector BS m
 rep_donor_amp = sqrt(params.rep_donor_gain);
@@ -100,18 +116,25 @@ for k = 1:K-K_FWA
         m_donor = donor_of(rep_idx);
         Hd_est = reshape(channel_est_dl_FWA(m_donor,rep_idx,:,:),[N_BS,N_CPE_FWA]);
         [~,~,Vr] = svd(Hd_est,'econ');
-        w_r = Vr(:,1);   %donor receive beam (dominant donor-link direction)
         Hs_est = reshape(channel_interFWA_est(rep_idx,k+K_FWA,:,1:N_UE),[N_CPE_FWA,N_UE]);
         [~,~,Vt] = svd(Hs_est.','econ');
-        w_t = Vt(:,1);   %service transmit beam towards assisted UE k
-        for m = 1:M_sectors
-            g_vec = reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*w_r*rep_donor_amp(m,rep_idx)*rep_gain_amp(rep_idx);
-            g_vec_est = reshape(channel_est_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*w_r*rep_donor_amp(m,rep_idx)*rep_gain_amp(rep_idx);
-            for n = 1:N_UE
-                s_n = reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[1,N_CPE_FWA])*w_t;
-                s_n_est = reshape(channel_interFWA_est(rep_idx,k+K_FWA,:,n),[1,N_CPE_FWA])*w_t;
-                H_rep(m,k,:,n) = reshape(H_rep(m,k,:,n),[N_BS,1]) + g_vec*s_n;
-                H_rep_est(m,k,:,n) = reshape(H_rep_est(m,k,:,n),[N_BS,1]) + g_vec_est*s_n_est;
+        %forwarding chains: strongest donor direction pairs with strongest
+        %service direction; the amplifier output (33 dBm cap) splits
+        %equally across chains, hence the 1/sqrt(ncr_rank) per-chain
+        %amplitude
+        for chain = 1:ncr_rank
+            w_r = Vr(:,chain); %donor receive beam of this chain
+            w_t = Vt(:,chain); %service transmit beam of this chain
+            amp_chain = rep_gain_amp(rep_idx)/sqrt(ncr_rank);
+            for m = 1:M_sectors
+                g_vec = reshape(channel_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*w_r*rep_donor_amp(m,rep_idx)*amp_chain;
+                g_vec_est = reshape(channel_est_dl_FWA(m,rep_idx,:,:),[N_BS,N_CPE_FWA])*w_r*rep_donor_amp(m,rep_idx)*amp_chain;
+                for n = 1:N_UE
+                    s_n = reshape(channel_interFWA(rep_idx,k+K_FWA,:,n),[1,N_CPE_FWA])*w_t;
+                    s_n_est = reshape(channel_interFWA_est(rep_idx,k+K_FWA,:,n),[1,N_CPE_FWA])*w_t;
+                    H_rep(m,k,:,n) = reshape(H_rep(m,k,:,n),[N_BS,1]) + g_vec*s_n;
+                    H_rep_est(m,k,:,n) = reshape(H_rep_est(m,k,:,n),[N_BS,1]) + g_vec_est*s_n_est;
+                end
             end
         end
     end

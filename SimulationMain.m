@@ -15,11 +15,16 @@ if(isempty(aID))
 end
 %RNG seed.
 rng(str2double(aID),'twister');
-%% Mobility params (TR 38.901 Table 7.2-5)
+%% Mobility params (TR 38.901 Table 7.2-1 / ITU-R M.2412)
 params.MOBILE = 1;
-params.ue_velocity_outdoor = 40/3.6; %outdoor (in-car) UTs: 40 km/h
-params.ue_velocity_indoor = 3/3.6;   %indoor UTs: 3 km/h
-params.Ts = 1.67e-5; %channel sample time (s)
+params.ue_velocity_outdoor = 30/3.6; %in-car UTs: 30 km/h (ITU-R M.2412 Dense Urban eMBB)
+params.ue_velocity_indoor = 3/3.6;   %indoor and pedestrian UTs: 3 km/h (TR 38.901 Table 7.2-1)
+%CSI aging lag: time between channel sounding and its use for precoding.
+%C-band NR runs 30 kHz SCS (0.5 ms slots); with the typical 5 ms
+%SRS/CSI-RS sounding periodicity (configurable per TS 38.214/TS 38.331)
+%the precoder is on average ~2.5 ms stale when applied - this lag, not a
+%single OFDM symbol, is what ages the channel for moving users
+params.Ts = 2.5e-3; %CSI staleness (s): half the 5 ms sounding period
 params.fc = 3.7e9; %carrier frequency (Hz)
 params.c = 3e8; %speed of light (m/s)
 %params.mob_rho (one channel-aging factor per cellular UE) is set after
@@ -40,20 +45,52 @@ params.BEAM = 0;
 %%
 
 
-numCPE_all = 50; %CPEs per site
+%FWA CPE count per site, swept as a TAKE RATE: the complex holds ~490
+%households (0.122 km^2 x ~10,000 residents/km^2 / 2.5 per household),
+%so 25-100 CPEs spans a ~5-20%% take rate. US FWA serves ~12%% of
+%broadband households in mid-2025, ~15%% by early 2026
+%(https://www.telecompetitor.com/fixed-wireless-is-thriving-and-that-could-be-a-problem-report/;
+%https://insights.opensignal.com/2025/10/20/the-state-of-us-fwa-what-impact-has-att-internet-airs-launch-had/dt;
+%https://www.ericsson.com/en/reports-and-papers/mobility-report/dataforecasts/fwa-outlook)
+numCPE_all_arr = 25:25:100; %CPEs per site (take-rate sweep)
 Band = 100e6;
 params.noiseFigure = 9; %receiver noise figure (dB)
 
-%% Suburban Macro (SMa) deployment, 3GPP TR 38.901 Table 7.2-5
-params.ISD = 1299; %inter-site distance (m); 1732 m also listed, ISDs of 1200-1800 m valid (note 2)
+%% Urban Macro (UMa) deployment, 3GPP TR 38.901 Table 7.2-1
+params.ISD = 500; %inter-site distance (m), UMa default (Table 7.2-1)
 params.deployRange = params.ISD/2; %cell radius (half ISD); sets the wrap-around span
-params.complexRadius = 200; %housing complex radius around each site (m): CPEs and the indoor
-                            %UEs live here; outdoor (in-car) UEs roam the rest of the cell
-params.coverageRange_sub6 = 2*params.deployRange + 30; %wrap-around square length
+%Two housing complexes side by side, one per site: CPEs, indoor UEs, and
+%outdoor pedestrians live in the complex; in-car UEs use the ring roads.
+%A separating road of width W_sep is kept between the complexes, so for
+%ISD < 500 m the complex radius shrinks to (ISD - W_sep)/2 instead of
+%letting the complexes touch
+params.W_sep = 20; %separation (road) width between the two complexes (m)
+params.complexRadius = min(200, (params.ISD - params.W_sep)/2);
+params.wrap_margin = 30; %guard (m) added to the wrap-around square so wrapped
+                         %replicas never coincide with real positions
+params.coverageRange_sub6 = 2*params.deployRange + params.wrap_margin; %wrap-around square length
 params.min_dist_2D = 35; %minimum BS-UT 2D distance (m)
 params.num_antennas_per_gNB = 64;
-params.rho_tot = 10^(0.1*49); %BS Tx power 49 dBm per sector, per the SMa calibration
-                              %assumptions of TR 38.901 clause 7.8 (ETSI TR 138 901 V19.2.0)
+params.rho_tot = 10^(0.1*56); %BS Tx power 56 dBm per sector for the 100 MHz band:
+                              %ITU-R M.2412 Dense Urban eMBB (UMa) specifies 49 dBm
+                              %per 20 MHz per TRxP (46 dBm per 10 MHz), i.e. constant
+                              %PSD; scaled to 100 MHz this gives 56 dBm, consistent
+                              %with commercial 320 W C-band massive-MIMO AAUs. FCC
+                              %compliance: peak-beam EIRP PSD = 36 dBm/MHz conducted
+                              %+ 8 dBi element + 18.1 dB array gain (64 el.) =
+                              %62.1 dBm/MHz, just under the 1640 W/MHz (62.15
+                              %dBm/MHz) non-rural C-band limit of 47 CFR 27.50(j)
+                              %(https://www.ecfr.gov/current/title-47/chapter-I/subchapter-B/part-27/subpart-C/section-27.50).
+                              %CONSTANT-PSD CONVENTION: rho_tot is spread uniformly
+                              %over the full band, so a service occupying a band
+                              %fraction x radiates x*rho_tot and sees x of the
+                              %noise - power splits in exact proportion to the
+                              %band split between cellular and FWA, and every
+                              %SINR computed with full-band power against
+                              %full-band-normalized channels is exact on any
+                              %subband (verified: halving band and power leaves
+                              %all SINRs unchanged and halves all rates to
+                              %machine precision)
 params.CELL_REPEAT = 1;
 params.TEMPORAL_MOBILITY = 1; %1 = cellular UEs move along trajectories and the
                               %large-scale state evolves across snapshots (see the
@@ -62,8 +99,9 @@ params.TEMPORAL_MOBILITY = 1; %1 = cellular UEs move along trajectories and the
 params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
 params.hr = 1.5; %outdoor UT height (m)
-params.hr_cpe = 4.5; %CPE at top floor of 2-storey residential building (m)
-params.ht_bs = 35; %BS antenna height (m)
+%CPE mounting height is drawn per CPE in generateSetup.m: top floor of
+%its own 4-8 floor building (see params.building_floors)
+params.ht_bs = 25; %BS antenna height (m), UMa (Table 7.2-1)
 %% Sectored BS antennas: 3 sectors per site, element pattern per TR 38.901 Table 7.3-1
 params.sectors_per_site = 3;
 sector_offsets = [30; 150; 270]; %sector boresight azimuths within a site (deg)
@@ -72,18 +110,14 @@ params.phi_3dB = 65; %horizontal 3 dB beamwidth (deg)
 params.SLA_V = 30; %side-lobe attenuation, vertical (dB)
 params.A_max = 30; %front-back attenuation (dB)
 params.G_ant_max = 8; %max element gain (dBi)
-%Mechanical downtilt in zenith-angle convention (90 deg = horizon), per
-%TR 38.901 SMa calibration: 92 deg for ISD = 1732 m, 95 deg for ISD = 1299 m
-if params.ISD <= 1500
-    params.tilt_zenith = 95;
-else
-    params.tilt_zenith = 92;
-end
-%% SMa propagation, TR 38.901 Clause 7.4 (pathloss, LOS probability, O2I)
-params.h_bldg = 10; %average building height h (m), SMa default
-params.W_street = 10; %average street width W (m), SMa default
-params.r_vegetation = 0.10; %vegetation clutter density: 0 none, 0.10 sparse, 0.20 dense
-params.indoor_UT_ratio = 0.8; %fraction of cellular UEs indoors (Table 7.2-5)
+%Mechanical downtilt in zenith-angle convention (90 deg = horizon):
+%12 deg downtilt per the TR 38.901 clause 7.8 UMa calibration assumptions
+params.tilt_zenith = 102;
+%% UMa propagation, TR 38.901 Clause 7.4 (pathloss, LOS probability, O2I)
+params.indoor_UT_ratio = 0.8; %fraction of cellular UEs indoors (Table 7.2-1)
+params.building_floors = [4 8]; %residential building height range in floors
+       %(TR 38.901 Table 7.2-1 UMa: uniform 4..8); drives the indoor UE
+       %floor draw and the CPE top-floor mounting height
 params.high_loss_ratio = 0.2; %fraction of indoor UEs in HIGH-LOSS (thermally
        %efficient, metal-coated IRR glass) buildings, TR 38.901 Clause
        %7.4.3.1; the mix is a simulation parameter, set to the ITU-R
@@ -94,18 +128,29 @@ params.high_loss_ratio = 0.2; %fraction of indoor UEs in HIGH-LOSS (thermally
 lambda_BS = 5;
 lambda_SC = 0; %no small cells (kept for the result-file format)
 %Active-user densities (busy-hour CONCURRENTLY ACTIVE UEs, not
-%subscribers). Suburban residential density averages ~1050 people/km^2
-%(Demographia international suburban densities, http://demographia.com/db-intlsub.htm;
-%FiveThirtyEight, https://fivethirtyeight.com/features/how-suburban-are-big-american-cities/),
-%rising to ~2000-4000/km^2 in a housing complex; with a ~3-5% busy-hour
-%active share this gives ~80-200 active UEs/km^2 indoors. Suburban roads
-%carry ~4-15 active in-car users/km^2. The resulting ~9 active UEs per
-%sector matches the full-buffer evaluation convention of 10 UEs per TRxP
-%(ITU-R M.2412-0, https://www.itu.int/dms_pub/itu-r/opb/rep/R-REP-M.2412-2017-PDF-E.pdf;
-%3GPP TR 38.913 / ETSI TR 138 913), and the 150/4 defaults reproduce the
-%80:20 indoor:outdoor UT ratio of TR 38.901 Table 7.2-5.
-lambda_UE_res_arr = 150; %50:50:400; %active UEs per km^2, residential block
-lambda_UE_road_arr = 4;  %2:2:20;    %active in-car UEs per km^2, roads outside (paired)
+%subscribers), urban apartment-complex calibration. Dense urban
+%apartment areas hold ~8,000-15,000 residents/km^2 (Demographia,
+%http://demographia.com/db-intlsub.htm), consistent with the 4-8 floor
+%UMa building model; a ~5% busy-hour active share - at the high end of
+%the range because complex residents run high-data-rate home
+%applications in the busy hour - gives ~500 active UEs/km^2 in the
+%complex (sweep to 1000 for the density-sensitivity figure). THREE user
+%classes, each anchored to a standard evaluation configuration:
+% - complex INDOOR users (3 km/h, O2I loss, floor heights) and complex
+%   OUTDOOR PEDESTRIANS (3 km/h, no O2I, 1.5 m height): TR 38.901
+%   Table 7.2-1 (UMa) specifies an 80% indoor UT ratio with ALL UTs
+%   moving at 3 km/h in the horizontal plane - i.e. its outdoor users
+%   are walking-speed street users - which is exactly the complex
+%   population, split 80:20 by pedestrian_ratio;
+% - perimeter-road IN-CAR users (30 km/h): ITU-R M.2412 Dense Urban
+%   eMBB deploys "80% indoor, 20% outdoor (in-car)" with in-car users
+%   at 30 km/h (Table 5b,
+%   https://www.itu.int/dms_pub/itu-r/opb/rep/R-REP-M.2412-2017-PDF-E.pdf);
+%   the ring between and around the complexes is literally that road,
+%   at ~5x the earlier suburban in-car density.
+lambda_UE_res_arr = 500; %250:250:1000; %active UEs per km^2 in the complex
+lambda_UE_road_arr = 20; %10:10:40;     %active in-car UEs per km^2, perimeter road (paired)
+params.pedestrian_ratio = 0.2; %fraction of complex UEs outdoors as pedestrians
 params.Lmax = 1;
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
@@ -147,8 +192,17 @@ params.csi_rs_offset_dB = 0;% CSI-RS EPRE relative to PDSCH EPRE (powerControlOf
 %the effective gain is min(G_max, P_max/P_in)
 rep_gain_arr = 90; %NCR amplification gain G_max (dB), TR 38.867
 params.rep_max_pow_dBm = 33; %NCR maximum output power (dBm), TR 38.867 / TS 38.106
-num_rep_arr = 1:1:6; %total enabled repeaters; attachment is per donor sector,
-                     %so coverage saturates at one repeater per sector (6)
+params.ncr_rank = 1; %NCR forwarded spatial layers. 1 (default) = Rel-18 NCR:
+                     %analog beamforming, a single amplify-and-forward chain,
+                     %no digital processing (Carvalho et al., "Network-
+                     %controlled repeater - an introduction", IEEE Comm.
+                     %Standards Mag. 2026, https://arxiv.org/pdf/2403.09601).
+                     %Set to params.N_UE_cell for the beyond-Rel-18
+                     %"MIMO-capable" repeater what-if: one AF chain per UE
+                     %antenna (top singular beam pairs, output power split
+                     %across chains; clamped internally to the supported rank)
+num_rep_arr = 1:1:6; %total enabled repeaters; greedy max-coverage attachment
+                     %is per donor sector, saturating near one per sector (6)
 params.num_repeater_per_cpe = 1; %repeaters associated per served user (fixed, not swept)
 params.rep_assist_frac = 0.2;    %fraction of each sector's WEAKEST cellular UEs (cell edge,
                                  %by serving-link large-scale gain) eligible for repeater
@@ -162,11 +216,12 @@ params.rep_assist_frac = 0.2;    %fraction of each sector's WEAKEST cellular UEs
 %      straight-line constant speed with a random heading per user
 %      (Random Direction model: Camp, Boleng & Davies, WCMC 2002,
 %      https://onlinelibrary.wiley.com/doi/10.1002/wcm.72), the 3GPP /
-%      ITU-R M.2412 evaluation convention; road UEs at 40 km/h in the
+%      ITU-R M.2412 evaluation convention; in-car road UEs at 30 km/h in the
 %      outer ring follow the straight-segment core of the Freeway
 %      highway model (Bai, Sadagopan & Helmy, IEEE INFOCOM 2003,
 %      https://ieeexplore.ieee.org/document/1208920), indoor UEs walk at
-%      3 km/h inside the complex (TR 38.901 Table 7.2-5 speeds), with
+%      3 km/h inside the complex (TR 38.901 Table 7.2-1; in-car speed
+%      per ITU-R M.2412 Dense Urban eMBB), with
 %      specular reflection at the region boundaries;
 %  (3) nbrOfRealizations fading / noise / CSI-error realizations per
 %      snapshot (within a snapshot the CSI-lag Jakes channel aging
@@ -192,7 +247,10 @@ r_min_arr = 1e6*(50:50:300);
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations: macro sites, each split into 3 co-located sector BSs
-    params.M_sites = 2; %number of macro sites
+    params.M_sites = 2; %number of macro sites. The TWO-SITE side-by-side
+    %topology is structural, not just a parameter: the site placement
+    %(Rsite = [0; ISD]), the one-complex-per-site layout, and the
+    %wrap-around span all assume it - changing M_sites needs layout rework
     M_sites = params.M_sites;
     S = params.sectors_per_site;
     params.numGNB = M_sites*S; %each sector is an independent BS entry
@@ -203,6 +261,8 @@ for idxBSDensity = 1:length(lambda_BS)
     params.siteLocations = siteLocations;
     params.locationsBS = kron(siteLocations, ones(S,1)); %sectors co-located at their site
     params.sector_boresights = repmat(sector_offsets, M_sites, 1); %boresight azimuth per BS entry (deg)
+    for idxnumCPE = 1:length(numCPE_all_arr) %FWA take-rate sweep
+    numCPE_all = numCPE_all_arr(idxnumCPE);
     %% CPE locations: numCPE_all per site, uniform in the housing complex
     %annulus [min_dist_2D, complexRadius] around each site
     numCPE_tot = M_sites*numCPE_all;
@@ -217,23 +277,27 @@ for idxBSDensity = 1:length(lambda_BS)
         %busy-hour active-user densities applied to the actual areas
         lambda_road = lambda_UE_road_arr(min(idxUEDensity,end));
         A_complex = pi*((params.complexRadius/1000)^2 - (params.min_dist_2D/1000)^2); %residential annulus (km^2)
-        A_road = pi*((params.deployRange/1000)^2 - (params.complexRadius/1000)^2); %outer ring (km^2)
-        numUE_in = ceil(lambda_UE_res_arr(idxUEDensity)*A_complex/S); %per sector, residential block (indoor)
-        numUE_out = ceil(lambda_road*A_road/S); %per sector, roads (in-car)
-        params.numUE = numUE_in + numUE_out;
+        A_road = pi*((params.deployRange/1000)^2 - (params.complexRadius/1000)^2); %perimeter road ring (km^2)
+        numUE_cmplx = ceil(lambda_UE_res_arr(idxUEDensity)*A_complex/S); %per sector, complex (indoor + pedestrians)
+        numUE_ped = round(params.pedestrian_ratio*numUE_cmplx); %per sector, of which outdoor pedestrians
+        numUE_road = ceil(lambda_road*A_road/S); %per sector, perimeter road (in-car)
+        params.numUE = numUE_cmplx + numUE_road;
         numUE = params.numUE;
         UE_locations = zeros(M_sectors*numUE,2);
-        isIndoorUE = false(M_sectors*numUE,1);
+        isIndoorUE = false(M_sectors*numUE,1);  %propagation class (O2I, floor height)
+        isInComplexUE = false(M_sectors*numUE,1); %motion region and speed class
         for idxSite = 1:M_sites
-            Nin = S*numUE_in;
-            Nout = S*numUE_out;
-            Rin = sqrt(params.min_dist_2D^2 + (params.complexRadius^2 - params.min_dist_2D^2)*rand(Nin,1));
-            Rout = sqrt(params.complexRadius^2 + (params.deployRange^2 - params.complexRadius^2)*rand(Nout,1));
-            angleUE = 2*pi*rand(Nin+Nout,1);
+            Ncm = S*numUE_cmplx;
+            Nrd = S*numUE_road;
+            Rin = sqrt(params.min_dist_2D^2 + (params.complexRadius^2 - params.min_dist_2D^2)*rand(Ncm,1));
+            Rout = sqrt(params.complexRadius^2 + (params.deployRange^2 - params.complexRadius^2)*rand(Nrd,1));
+            angleUE = 2*pi*rand(Ncm+Nrd,1);
             RUE = [Rin; Rout];
-            base = (idxSite-1)*(Nin+Nout);
-            UE_locations(base+(1:Nin+Nout),:) = siteLocations(idxSite,:) + [RUE.*cos(angleUE), RUE.*sin(angleUE)];
-            isIndoorUE(base+(1:Nin)) = true;
+            base = (idxSite-1)*(Ncm+Nrd);
+            UE_locations(base+(1:Ncm+Nrd),:) = siteLocations(idxSite,:) + [RUE.*cos(angleUE), RUE.*sin(angleUE)];
+            isInComplexUE(base+(1:Ncm)) = true;
+            %first the indoor users, then the pedestrian tail of the block
+            isIndoorUE(base+(1:Ncm-S*numUE_ped)) = true;
         end
         params.UE_locations = UE_locations;
         params.isIndoorUE = isIndoorUE;
@@ -249,12 +313,61 @@ for idxBSDensity = 1:length(lambda_BS)
         %noise power, which is re-applied here
         noise_mW = 10^(0.1*(-174 + 10*log10(Band) + params.noiseFigure));
         P_in_rep_mW = params.rho_tot*noise_mW*sum(params.gainOverNoise_lin(:,1:numCPE_tot).*params.rep_donor_gain,1)';
-        %Per-UE channel aging factor: indoor UEs move at 3 km/h, outdoor
-        %UEs at 40 km/h (TR 38.901 Table 7.2-5)
+        %Per-UE channel aging factor: complex users (indoor and outdoor
+        %pedestrians) move at 3 km/h (TR 38.901 Table 7.2-1 UMa: all UTs
+        %3 km/h), in-car road users at 30 km/h (M.2412 Dense Urban eMBB)
         v_ue = params.ue_velocity_outdoor*ones(M_sectors*numUE,1);
-        v_ue(isIndoor(numCPE_tot+1:end)) = params.ue_velocity_indoor;
+        v_ue(isInComplexUE) = params.ue_velocity_indoor;
         params.mob_rho = besselj(0,2*pi*params.Ts*v_ue*params.fc/params.c);
         params.BETA_interUE = db2pow(gainOverNoisedB_ue);
+        %% Enabled-repeater pool order: GREEDY MAXIMUM COVERAGE over the
+        %DISADVANTAGED cellular UEs. Eligibility mirrors the rate
+        %computation exactly (the weakest rep_assist_frac fraction of
+        %each sector's UEs by serving-link large-scale gain); a repeater
+        %can cover an eligible UE iff its donor sector is the UE's
+        %serving sector and the donor x service link metric is positive.
+        %Each greedy pick covers the most NOT-YET-COVERED eligible UEs
+        %(ties broken by the larger summed metric), and the pool for any
+        %budget is a prefix of the greedy sequence. Greedy maximization
+        %of a coverage (submodular) function is within (1 - 1/e) of the
+        %optimal selection: G. L. Nemhauser, L. A. Wolsey, M. L. Fisher,
+        %"An analysis of approximations for maximizing submodular set
+        %functions - I", Mathematical Programming 14, 265-294 (1978),
+        %https://doi.org/10.1007/BF01588971
+        BETA_FWA_assoc = db2pow(gainOverNoisedB(:,1:numCPE_tot)).*D_FWA;
+        donor_of_cpe = zeros(numCPE_tot,1);
+        for q = 1:numCPE_tot
+            donor_of_cpe(q) = find(D_FWA(:,q)==1,1);
+        end
+        eligible = false(M_sectors*numUE,1);
+        gain_ue_drop = params.gainOverNoise_lin(:,numCPE_tot+1:end);
+        for m = 1:M_sectors
+            served = find(D_cell(m,:)==1);
+            [~,ord] = sort(gain_ue_drop(m,served),'ascend');
+            n_assist = ceil(params.rep_assist_frac*numel(served));
+            eligible(served(ord(1:n_assist))) = true;
+        end
+        elig_idx = find(eligible)';
+        Vcov = zeros(numCPE_tot,numel(elig_idx)); %coverage metric matrix
+        for j = 1:numel(elig_idx)
+            kUE = elig_idx(j);
+            m_serv = find(D_cell(:,kUE)==1,1);
+            v_rep = BETA_FWA_assoc(m_serv,:)'.*params.rep_donor_gain(m_serv,:)'.*params.BETA_interUE(1:numCPE_tot,numCPE_tot+kUE);
+            v_rep(donor_of_cpe ~= m_serv) = 0;
+            Vcov(:,j) = max(v_rep,0);
+        end
+        covered = false(1,numel(elig_idx));
+        remaining = true(numCPE_tot,1);
+        greedy_order = zeros(numCPE_tot,1);
+        for pick = 1:numCPE_tot
+            newcov = sum(Vcov(:,~covered) > 0, 2);
+            newcov(~remaining) = -1;
+            cand = find(newcov == max(newcov) & remaining);
+            [~,ic] = max(sum(Vcov(cand,:),2)); %tie-break: summed metric
+            greedy_order(pick) = cand(ic);
+            covered = covered | (Vcov(cand(ic),:) > 0);
+            remaining(cand(ic)) = false;
+        end
         %% Trajectory of the cellular UEs (randomness layer 2)
         %The per-snapshot large-scale states are generated ONCE per seed,
         %before the repeater sweep, so every num_rep value sees the same
@@ -274,10 +387,10 @@ for idxBSDensity = 1:length(lambda_BS)
             UEpos_t = UE_locations(:,1) + 1i*UE_locations(:,2);
             siteCenterUE = repelem(siteLocations(:,1) + 1i*siteLocations(:,2), S*numUE, 1);
             v_move = params.ue_velocity_outdoor*ones(M_sectors*numUE,1);
-            v_move(isIndoorUE) = params.ue_velocity_indoor;
+            v_move(isInComplexUE) = params.ue_velocity_indoor; %pedestrians too
             heading = 2*pi*rand(M_sectors*numUE,1);
-            r_lo = params.min_dist_2D*ones(M_sectors*numUE,1); r_lo(~isIndoorUE) = params.complexRadius;
-            r_hi = params.complexRadius*ones(M_sectors*numUE,1); r_hi(~isIndoorUE) = params.deployRange;
+            r_lo = params.min_dist_2D*ones(M_sectors*numUE,1); r_lo(~isInComplexUE) = params.complexRadius;
+            r_hi = params.complexRadius*ones(M_sectors*numUE,1); r_hi(~isInComplexUE) = params.deployRange;
             for t_snap = 2:nbrOfSnapshots
                 %advance by dt_snap; specular reflection keeps each user
                 %inside its motion region (annulus around its site)
@@ -314,23 +427,9 @@ for idxBSDensity = 1:length(lambda_BS)
                 params.repeat_gain_amp = sqrt(min(10^(0.1*rep_gain_arr(idxrepgain)), ...
                     10^(0.1*params.rep_max_pow_dBm)./P_in_rep_mW));
                 params.num_repeater_tot = num_rep_arr(idxnumrep); %total repeaters enabled
-                %Enabled repeater pool for the cellular-UE phase, chosen
-                %to maximise coverage: every UE votes for the repeater it
-                %would associate with (same donor x service metric as the
-                %rate computation, through its serving sector), and the
-                %num_repeater_tot most-voted CPEs are enabled
-                BETA_FWA_assoc = db2pow(gainOverNoisedB(:,1:numCPE_tot)).*D_FWA;
-                votes = zeros(numCPE_tot,1);
-                for kUE = 1:M_sectors*numUE
-                    m_serv = find(D_cell(:,kUE)==1,1);
-                    v_rep = BETA_FWA_assoc(m_serv,:)'.*params.rep_donor_gain(m_serv,:)'.*params.BETA_interUE(1:numCPE_tot,numCPE_tot+kUE);
-                    [v_best,best_rep] = max(v_rep);
-                    if isfinite(v_best) && v_best > 0
-                        votes(best_rep) = votes(best_rep) + 1;
-                    end
-                end
-                [~,vote_order] = sort(votes,'descend');
-                params.set_repeat = vote_order(1:min(params.num_repeater_tot,numCPE_tot));
+                %pool = prefix of the greedy maximum-coverage sequence
+                %computed once per drop above
+                params.set_repeat = greedy_order(1:min(params.num_repeater_tot,numCPE_tot));
                 Band = params.Band; %Communication bandwidth
                 K_FWA = params.numCPE;
                 params.numUE = numUE;
@@ -389,7 +488,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 else
                     cellTag = 'packing_cell_plain_';
                 end
-                writematrix(rate_dl, strcat(packFolder,'/',cellTag,num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
+                writematrix(rate_dl, strcat(packFolder,'/',cellTag,num2str(numCPE_all),'CPE_',num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
                 if (quantile(mean_rate_dl_cell,params.loss_pc_cell)>=params.r_min_cell)
                     params.Band = max(params.Band*(1-params.r_min_cell/quantile(mean_rate_dl_cell,params.loss_pc_cell)),0);
                     if (params.Band > 0)
@@ -433,7 +532,7 @@ for idxBSDensity = 1:length(lambda_BS)
                         %raw FWA packing matrix (skipped if the cell phase
                         %consumed the whole band: all-zero rates carry no
                         %distribution information)
-                        writematrix(rate_dl, strcat(packFolder,'/packing_FWA_',num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
+                        writematrix(rate_dl, strcat(packFolder,'/packing_FWA_',num2str(numCPE_all),'CPE_',num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
                     end
                     Band_FWA = params.Band;
                     for idxrmin = 1:length(r_min_arr)
@@ -518,6 +617,7 @@ for idxBSDensity = 1:length(lambda_BS)
             end
         end
     end
+    end %idxnumCPE (FWA take-rate sweep)
 end
 tEnd = toc(tStart);
 fprintf('Total runtime: %f seconds\n',tEnd)

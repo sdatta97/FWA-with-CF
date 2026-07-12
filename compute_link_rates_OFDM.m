@@ -6,7 +6,9 @@ BW = params.Band; %frequency reuse 1: every sector uses the full band
 TAU_FAC = params.preLogFactor;
 N_BS = size(channel_dl,3);
 N_UE = size(channel_dl,4);
-p_d = params.rho_tot; % 1*K;
+p_d = params.rho_tot; %total sector power. Constant-PSD convention: channels
+%are normalized by FULL-band noise, so p_d*|h|^2 is the PSD ratio - exact
+%on any subband; the bandwidth share enters only through the rate prelog
 D = params.D;
 if params.HW_IMPAIRMENTS
     Kt = params.Kt;

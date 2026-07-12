@@ -60,15 +60,18 @@ end
 %be declined on poor links (FCC 24-27), so the usable fraction is
 %computed per drop from the per-CPE quantiles, then averaged over drops.
 %The ratio f_FWA/f_cell is the packing multiple of revenue potential.
-fwaFiles = dir(fullfile(packDir,'packing_FWA_*rep_*.csv'));
+fwaFiles = dir(fullfile(packDir,'packing_FWA_*CPE_*rep_*.csv'));
 if ~isempty(fwaFiles)
     eps_grid = (0.01:0.01:0.20)';
-    %use the smallest num_rep tag present, so one consistent NCR pool
-    tok = regexp({fwaFiles.name},'packing_FWA_(\d+)rep_','tokens','once');
-    repTags = cellfun(@(c) str2double(c{1}), tok);
-    nrep = min(repTags);
-    tag = sprintf('%drep', nrep);
-    fwaFiles = fwaFiles(repTags == nrep);
+    %use the smallest CPE-count and num_rep tags present, so the curves
+    %come from one consistent configuration
+    tok = regexp({fwaFiles.name},'packing_FWA_(\d+)CPE_(\d+)rep_','tokens','once');
+    cpeTags = cellfun(@(c) str2double(c{1}), tok);
+    repTags = cellfun(@(c) str2double(c{2}), tok);
+    ncpe = min(cpeTags);
+    nrep = min(repTags(cpeTags == ncpe));
+    tag = sprintf('%dCPE_%drep', ncpe, nrep);
+    fwaFiles = fwaFiles(cpeTags == ncpe & repTags == nrep);
     pool_cell_rep = [];
     pool_cell_plain = [];
     f_FWA_per_seed = zeros(numel(fwaFiles),numel(eps_grid));

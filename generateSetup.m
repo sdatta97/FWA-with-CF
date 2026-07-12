@@ -1,6 +1,6 @@
 function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesUEs,isIndoor,hUT,O2IdB,repDonorGaindB,mobState] = generateSetup(params,seed,mobState)
-%Generates one realization of the SMa simulation setup: sectored BS
-%antenna gains (TR 38.901 Table 7.3-1), SMa pathloss / LOS probability /
+%Generates one realization of the UMa simulation setup: sectored BS
+%antenna gains (TR 38.901 Table 7.3-1), UMa pathloss / LOS probability /
 %O2I penetration (TR 38.901 Clause 7.4), correlated shadow fading,
 %spatial correlation matrices, repeater antenna gains, and the
 %sector-association matrices D_FWA / D_cell.
@@ -46,17 +46,14 @@ noiseFigure = params.noiseFigure;
 %Compute noise power (in dBm)
 noiseVariancedBm = -174 + 10*log10(B) + noiseFigure;
 
-%Pathloss parameters of the log-distance model in (5.42), used only for
-%the inter-UE (CPE repeater / UE-UE) links; BS-UT links use the SMa
-%models of TR 38.901 Clause 7.4 below
-alpha = 36.7;
-constantTerm = -30.5;
-
-%Standard deviation of the shadow fading in (5.43)
-sigma_sf = 4;
-
-%Decorrelation distance of the shadow fading in (5.43)
-decorr = 9;
+%Shadow-fading correlation distances in the horizontal plane (m),
+%TR 38.901 Table 7.5-6. BS links (UMa): 37 m LOS / 50 m NLOS; inter-UE
+%small-cell links (UMi): 10 m LOS / 13 m NLOS. One normalized field per
+%link is drawn before the LOS state applies, so the NLOS values are used
+%for both the cross-user spatial correlation and the temporal AR(1)
+%evolution along the mobility trajectories
+decorr = 50;    %UMa BS-side field
+decorr_ue = 13; %UMi inter-UE field
 
 %LOS-state correlation distance (m) for temporal evolution, per the
 %spatial-consistency procedure of TR 38.901 Clause 7.6.3 (Table
@@ -74,16 +71,10 @@ SLA_V = params.SLA_V;
 A_max = params.A_max;
 G_ant_max = params.G_ant_max;
 
-%SMa propagation parameters (TR 38.901 Clause 7.4)
+%UMa propagation parameters (TR 38.901 Clause 7.4)
 c0 = 3e8;
-fc_GHz = params.fc/1e9;      %centre frequency (GHz); SMa PL valid for 0.5-37 GHz
+fc_GHz = params.fc/1e9;      %centre frequency (GHz); UMa PL valid for 0.5-100 GHz
 hBS = params.ht_bs;
-h_bldg = params.h_bldg;      %average building height h (m)
-W_street = params.W_street;  %average street width W (m)
-%LOS probability clutter parameters (Table 7.4.2-1, SMa row)
-d_clutter = 30;
-h_com = 20; h_res = 8; h_veg = 15;
-r_com = 0.02; r_res = 0.18; r_veg = params.r_vegetation;
 %O2I building penetration (Clause 7.4.3.1): low-loss (traditional) and
 %high-loss (thermally efficient, metal-coated IRR glass) building models.
 %The mix is a simulation parameter (params.high_loss_ratio); ITU-R
@@ -101,10 +92,26 @@ if isfield(params,'high_loss_ratio')
 else
     high_loss_ratio = 0;
 end
-%SMa LOS pathloss below the breakpoint (Table 7.4.1-1); PL2 above the
-%breakpoint is PL1 evaluated at d_BP plus 40log10(d3D/d_BP)
-PL1_SMa = @(d3D) 20*log10(40*pi*d3D*fc_GHz/3) + min(0.03*h_bldg^1.72,10)*log10(d3D) ...
-                 - min(0.044*h_bldg^1.72,14.77) + 0.002*log10(h_bldg)*d3D;
+%UMa LOS pathloss (Table 7.4.1-1): PL1 below / PL2 above the breakpoint
+%distance d'BP = 4 h'BS h'UT fc/c computed from the EFFECTIVE antenna
+%heights h' = h - hE, where the environment height hE follows Note 1
+PL1_UMa = @(d3D) 28.0 + 22*log10(d3D) + 20*log10(fc_GHz);
+PL2_UMa = @(d3D,dBP,hUTk) 28.0 + 40*log10(d3D) + 20*log10(fc_GHz) ...
+                 - 9*log10(dBP^2 + (hBS - hUTk)^2);
+
+%Inter-UE (CPE/NCR -> user) links: the NCR access link is modelled as a
+%SMALL CELL using the TR 38.901 UMi-Street-Canyon models (Table 7.4.1-1
+%pathloss, Table 7.4.2-1 LOS probability, sigma_SF 4 dB LOS / 7.82 dB
+%NLOS), with the top-floor-mounted CPE in the micro-BS role (UMi assumes
+%hBS = 10 m; our CPE mounts span 10.5-22.5 m and enter the formulas
+%through the actual heights). This removes the last non-3GPP propagation
+%model from the setup.
+PL1_UMi = @(d3D) 32.4 + 21*log10(d3D) + 20*log10(fc_GHz);
+PL2_UMi = @(d3D,dBP,h1,h2) 32.4 + 40*log10(d3D) + 20*log10(fc_GHz) ...
+                 - 9.5*log10(dBP^2 + (h1 - h2)^2);
+PLN_UMi = @(d3D,h2) 22.4 + 35.3*log10(d3D) + 21.3*log10(fc_GHz) - 0.3*(h2 - 1.5);
+sigma_UMi_LOS = 4;
+sigma_UMi_NLOS = 7.82;
 
 %Prepare to save results
 gainOverNoisedB = zeros(M_sectors,K);
@@ -113,7 +120,7 @@ R_gNB = zeros(N,N,M_sectors,K);
 R_cpe = zeros(N_UE_FWA,N_UE_FWA,M_sectors,K_FWA);
 %Only CPEs (indices 1:K_FWA) act as inter-UE transmitters, so the third
 %dimension is K_FWA rather than K (a K x K allocation would waste GBs at
-%the SMa UE counts)
+%the deployment UE counts)
 R_interue = zeros(N_UE_FWA,N_UE_FWA,K_FWA,K);
 R_ue = zeros(N_UE_cell,N_UE_cell,M_sectors,K-K_FWA);
 distances = zeros(M_sectors,K);
@@ -138,6 +145,8 @@ end
 %per-site latent stores returned in mobState for the next snapshot
 shadowSiteStore = zeros(K,M_sites);
 LOSsiteStore = false(M_sites,K);
+hEStore = ones(M_sites,K); %effective environment height hE (m), Note 1 of Table 7.4.1-1
+LOSueStore = false(K_FWA,K); %LOS state of each CPE/NCR -> user link (UMi model)
 %Compute alternative AP locations by using wrap around
 wrapHorizontal = repmat([-coverageRange_sub6 0 coverageRange_sub6],[3 1]);
 wrapVertical = wrapHorizontal';
@@ -145,20 +154,20 @@ wrapLocations = wrapHorizontal(:)' + 1i*wrapVertical(:)';
 APpositionsWrapped = repmat(APpositions,[1 length(wrapLocations)]) + repmat(wrapLocations,[M_sectors 1]);
 
 %Prepare to store shadowing correlation matrix. The BS-side field is
-%normalized to unit variance and scaled per link by the SMa shadow
-%fading std (4/6 dB LOS below/above breakpoint, 8 dB NLOS)
+%normalized to unit variance and scaled per link by the UMa shadow
+%fading std (4 dB LOS, 6 dB NLOS)
 shadowCorrMatrix = ones(K,K);
 shadowAPrealizations = zeros(K,M_sectors);
 
-shadowCorrMatrix_ue = sigma_sf^2*ones(K,K);
+shadowCorrMatrix_ue = ones(K,K); %normalized field; per-link sigma applied at use
 shadowCPErealizations_ue = zeros(K,K);
 
 %Indoor state, height, and O2I penetration loss of each user. CPEs are
-%outdoor-mounted at params.hr_cpe. Cellular UEs are indoors with
-%probability params.indoor_UT_ratio (Table 7.2-5), in residential
-%buildings with floor heights 1.5 or 4.5 m, and receive a UT-specific
-%O2I loss (low-loss residential model, Clause 7.4.3.1) applied to all
-%their links
+%outdoor-mounted at the top floor of their building. Cellular UEs are indoors with
+%probability params.indoor_UT_ratio (Table 7.2-1), on a uniformly drawn
+%floor of a 4-8 floor building (UMa floor model), and receive a
+%UT-specific O2I loss (low/high-loss models of Clause 7.4.3.1) applied
+%to all their links
 isIndoor = false(K,1);
 if isfield(params,'isIndoorUE') && ~isempty(params.isIndoorUE)
     %Location-determined indoor state supplied by the caller: UEs inside
@@ -174,16 +183,30 @@ if evolveMode
     hUT = mobState.hUT;
     O2IdB = mobState.O2IdB;
 else
+    %residential building height range in floors (TR 38.901 Table 7.2-1
+    %UMa: uniform between 4 and 8 floors)
+    if isfield(params,'building_floors')
+        flr = params.building_floors;
+    else
+        flr = [4 8];
+    end
     hUT = params.hr*ones(K,1);
-    hUT(1:K_FWA) = params.hr_cpe;
+    %CPEs are mounted at the TOP FLOOR of their own 4-8 floor building
+    %(floor-model heights, within the <=22.5 m validity range of the UMa
+    %LOS-probability and pathloss models); replaces the legacy fixed
+    %4.5 m two-storey mount
+    for k = 1:K_FWA
+        Nfl = randi([flr(1) flr(2)]);
+        hUT(k) = 3*(Nfl - 1) + 1.5;
+    end
     O2IdB = zeros(K,1);
     for k = K_FWA+1:K
         if isIndoor(k)
-            if rand < 0.5
-                hUT(k) = 4.5;
-            else
-                hUT(k) = 1.5;
-            end
+            %UMa floor model (Table 7.2-1): hUT = 3(nfl - 1) + 1.5 with
+            %nfl uniform over the floors of a flr(1)..flr(2) floor building
+            Nfl = randi([flr(1) flr(2)]);
+            nfl = randi([1 Nfl]);
+            hUT(k) = 3*(nfl - 1) + 1.5;
             d2Din = min(10*rand, 10*rand); %residential depth: min of two U(0,10) m
             if rand < high_loss_ratio
                 %thermally-efficient (high-loss) building
@@ -232,19 +255,25 @@ for k = 1:K
         A_H = -min(12*(relAzimuth/phi_3dB)^2, A_max);
         sectorGaindB(l) = G_ant_max - min(-(A_V + A_H), A_max);
     end
-    %LOS state per site (SMa LOS probability, Table 7.4.2-1), shared by
-    %the co-located sectors of a site
+    %LOS state and environment height per site (UMa, Table 7.4.2-1 and
+    %Table 7.4.1-1 Note 1), shared by the co-located sectors of a site
     LOSstate = false(M_sectors,1);
-    invk_sum = (-log(1-r_com)*(h_com - hUT(k)) - log(1-r_res)*max(h_res - hUT(k),0))/(d_clutter*(hBS - hUT(k)));
-    if r_veg > 0
-        invk_sum = invk_sum - log(1-r_veg)*(h_veg - hUT(k))/(d_clutter*(hBS - hUT(k)));
+    hE_site = ones(M_sites,1);
+    %UMa high-UT LOS enhancement term C'(hUT)
+    if hUT(k) <= 13
+        C_hUT = 0;
+    else
+        C_hUT = ((hUT(k) - 13)/10)^1.5;
     end
     for s = 1:M_sites
         d2D_site = distanceAPstoUE((s-1)*S+1); %identical for co-located sectors
-        if d2D_site <= 10
+        if d2D_site <= 18
             pLOS = 1;
+            g_d = 0;
         else
-            pLOS = exp(-d2D_site*invk_sum);
+            g_d = (5/4)*(d2D_site/100)^3*exp(-d2D_site/150);
+            pLOS = (18/d2D_site + exp(-d2D_site/63)*(1 - 18/d2D_site)) ...
+                   *(1 + C_hUT*g_d);
         end
         if evolveMode && rand >= min(deltaD(k)/d_LOS,1)
             %sticky LOS state within the correlation distance d_LOS
@@ -252,29 +281,48 @@ for k = 1:K
         else
             LOSstate((s-1)*S+(1:S)) = rand < pLOS;
         end
+        %effective environment height hE (Note 1): 1 m for UTs below
+        %13 m; above, hE = 1 m with probability 1/(1+C) and otherwise
+        %uniform over {12, 15, ..., hUT - 1.5}. Drawn once per user-site
+        %(the surrounding buildings do not move) and frozen thereafter
+        if evolveMode
+            hE_site(s) = mobState.hE(s,k);
+        elseif hUT(k) < 13
+            hE_site(s) = 1;
+        else
+            C_env = C_hUT*g_d;
+            if rand < 1/(1 + C_env)
+                hE_site(s) = 1;
+            else
+                hE_choices = 12:3:(hUT(k) - 1.5);
+                hE_site(s) = hE_choices(randi(numel(hE_choices)));
+            end
+        end
     end
     LOSsiteStore(:,k) = LOSstate(1:S:M_sectors);
-    %SMa pathloss (Table 7.4.1-1) and per-link shadow fading std
+    hEStore(:,k) = hE_site;
+    %UMa pathloss (Table 7.4.1-1) and per-link shadow fading std
     PLdB = zeros(M_sectors,1);
     sigmaSF = zeros(M_sectors,1);
-    dBP = 2*pi*hBS*hUT(k)*params.fc/c0; %breakpoint distance (note 5)
     for l = 1:M_sectors
         d2D = distanceAPstoUE(l);
         d3D = distances(l,k);
-        if LOSstate(l)
-            if d2D < dBP
-                PLdB(l) = PL1_SMa(d3D);
-                sigmaSF(l) = 4;
-            else
-                PLdB(l) = PL1_SMa(dBP) + 40*log10(d3D/dBP);
-                sigmaSF(l) = 6;
-            end
+        hE = hE_site(1 + floor((l-1)/S)); %environment height of this site
+        dBP = 4*(hBS - hE)*(hUT(k) - hE)*params.fc/c0; %breakpoint d'BP
+        if d2D < dBP
+            PL_LOS = PL1_UMa(d3D);
         else
-            PLdB(l) = 161.04 - 7.1*log10(W_street) + 7.5*log10(h_bldg) ...
-                - (24.37 - 3.7*(h_bldg/hBS)^2)*log10(hBS) ...
-                + (43.42 - 3.1*log10(hBS))*(log10(d3D) - 3) ...
-                + 20*log10(fc_GHz) - (3.2*(log10(11.75*hUT(k)))^2 - 4.97);
-            sigmaSF(l) = 8;
+            PL_LOS = PL2_UMa(d3D,dBP,hUT(k));
+        end
+        if LOSstate(l)
+            PLdB(l) = PL_LOS;
+            sigmaSF(l) = 4;
+        else
+            %NLOS: max of the LOS pathloss and the UMa-NLOS expression
+            PL_NLOS = 13.54 + 39.08*log10(d3D) + 20*log10(fc_GHz) ...
+                      - 0.6*(hUT(k) - 1.5);
+            PLdB(l) = max(PL_LOS, PL_NLOS);
+            sigmaSF(l) = 6;
         end
     end
     if evolveMode
@@ -362,8 +410,8 @@ for k = 1:K
         %per-link AR(1) evolution of the inter-UE shadow fading: both
         %endpoints' displacements decorrelate a link (the transmitting
         %CPEs are stationary, so only the receiver's motion matters)
-        a_ue = 2.^(-(deltaD(k) + deltaD)'/decorr); %1 x K
-        shadowing_ue = a_ue.*mobState.shadow_ue(k,:) + sigma_sf*sqrt(1-a_ue.^2).*randn(1,K);
+        a_ue = 2.^(-(deltaD(k) + deltaD)'/decorr_ue); %1 x K
+        shadowing_ue = a_ue.*mobState.shadow_ue(k,:) + sqrt(1-a_ue.^2).*randn(1,K);
         newcolumn_ue = [];
     else
     % If this is not the first CPE
@@ -373,16 +421,16 @@ for k = 1:K
         %UEs' shadow fading realization have already been generated.
         %This computation is based on Theorem 10.2 in "Fundamentals of
         %Statistical Signal Processing: Estimation Theory" by S. Kay
-        newcolumn_ue = (sigma_sf^2).*2.^(-abs(UEposition - UEpositions(1:k-1))/decorr);
+        newcolumn_ue = 2.^(-abs(UEposition - UEpositions(1:k-1))/decorr_ue);
         term1 = newcolumn_ue'/shadowCorrMatrix_ue(1:k-1,1:k-1);
         meanvalues_ue = term1*shadowCPErealizations_ue(1:k-1,:);
-        stdvalue_ue = sqrt(sigma_sf^2 - term1*newcolumn_ue);
+        stdvalue_ue = sqrt(1 - term1*newcolumn_ue);
 
     else %If this is the first UE
 
         %Add the UE and begin to store shadow fading correlation values
         meanvalues_ue = 0;
-        stdvalue_ue = sigma_sf;
+        stdvalue_ue = 1;
         newcolumn_ue = [];
 
     end
@@ -407,9 +455,47 @@ for k = 1:K
             repServiceGaindB(l) = bestGain;
         end
     end
+    %UMi-Street-Canyon pathloss and LOS state per CPE/NCR -> user link
+    %(the NCR access link as a small cell). Rows K_FWA+1:K (UE -> UE) are
+    %never consumed downstream and use the NLOS expression directly
+    PL_ue = zeros(K,1);
+    sigmaSF_ue = sigma_UMi_NLOS*ones(K,1);
+    for l = 1:K
+        d2D_ue = max(distancesUEs(l,k), 1);
+        d3D_ue = sqrt(d2D_ue^2 + (hUT(l) - hUT(k))^2);
+        dBP_ue = 4*(hUT(l) - 1)*(hUT(k) - 1)*params.fc/c0; %d'BP, hE = 1 (UMi)
+        if d2D_ue < dBP_ue
+            PL_LOS_ue = PL1_UMi(d3D_ue);
+        else
+            PL_LOS_ue = PL2_UMi(d3D_ue,dBP_ue,hUT(l),hUT(k));
+        end
+        if l <= K_FWA && l ~= k
+            %LOS probability (Table 7.4.2-1, UMi row) with a sticky LOS
+            %state along the receiver's trajectory (the CPE is static)
+            if d2D_ue <= 18
+                pLOS_ue = 1;
+            else
+                pLOS_ue = 18/d2D_ue + exp(-d2D_ue/36)*(1 - 18/d2D_ue);
+            end
+            if evolveMode && rand >= min(deltaD(k)/d_LOS,1)
+                LOS_l = mobState.LOS_ue(l,k);
+            else
+                LOS_l = rand < pLOS_ue;
+            end
+            LOSueStore(l,k) = LOS_l;
+            if LOS_l
+                PL_ue(l) = PL_LOS_ue;
+                sigmaSF_ue(l) = sigma_UMi_LOS;
+            else
+                PL_ue(l) = max(PL_LOS_ue, PLN_UMi(d3D_ue,hUT(k)));
+            end
+        else
+            PL_ue(l) = max(PL_LOS_ue, PLN_UMi(d3D_ue,hUT(k)));
+        end
+    end
     %Compute the channel gain divided by noise power; the O2I loss of an
     %indoor receiving UE also applies to its inter-UE links
-    gainOverNoisedB_ue(:,k) = constantTerm - alpha*log10(distancesUEs(:,k)) + repServiceGaindB + shadowing_ue' - O2IdB(k) - noiseVariancedBm;
+    gainOverNoisedB_ue(:,k) = -PL_ue + repServiceGaindB + sigmaSF_ue.*shadowing_ue' - O2IdB(k) - noiseVariancedBm;
 
     % %Update shadowing correlation matrix and store realizations
     if ~evolveMode
@@ -452,6 +538,6 @@ end
 
 %Latent-variable state handed to the next temporal-mobility snapshot
 mobState = struct('UEpositions',UEpositions,'shadowSite',shadowSiteStore, ...
-    'LOSstate',LOSsiteStore,'O2IdB',O2IdB,'hUT',hUT, ...
+    'LOSstate',LOSsiteStore,'hE',hEStore,'LOS_ue',LOSueStore,'O2IdB',O2IdB,'hUT',hUT, ...
     'repOrientations',repOrientations,'shadow_ue',shadowCPErealizations_ue);
 end
