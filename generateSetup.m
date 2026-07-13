@@ -1,6 +1,6 @@
 function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesUEs,isIndoor,hUT,O2IdB,repDonorGaindB,mobState] = generateSetup(params,seed,mobState)
-%Generates one realization of the UMa simulation setup: sectored BS
-%antenna gains (TR 38.901 Table 7.3-1), UMa pathloss / LOS probability /
+%Generates one realization of the suburban (SMa) simulation setup:
+%sectored BS antenna gains (TR 38.901 Table 7.3-1), SMa pathloss / LOS /
 %O2I penetration (TR 38.901 Clause 7.4), correlated shadow fading,
 %spatial correlation matrices, repeater antenna gains, and the
 %sector-association matrices D_FWA / D_cell.
@@ -71,10 +71,19 @@ SLA_V = params.SLA_V;
 A_max = params.A_max;
 G_ant_max = params.G_ant_max;
 
-%UMa propagation parameters (TR 38.901 Clause 7.4)
+%SMa propagation parameters (TR 38.901 Clause 7.4)
 c0 = 3e8;
-fc_GHz = params.fc/1e9;      %centre frequency (GHz); UMa PL valid for 0.5-100 GHz
+fc_GHz = params.fc/1e9;      %centre frequency (GHz); SMa PL valid for 0.5-37 GHz
 hBS = params.ht_bs;
+h_bldg = params.h_bldg;      %average building height h (m)
+W_street = params.W_street;  %average street width W (m)
+%LOS probability clutter parameters (Table 7.4.2-1, SMa row): the
+%suburban ZONING MIX expressed in the standard's own clutter densities -
+%commercial (strip malls), residential (homes and apartment complexes),
+%and natural vegetation
+d_clutter = 30;
+h_com = 20; h_res = 8; h_veg = 15;
+r_com = 0.02; r_res = 0.18; r_veg = params.r_vegetation;
 %O2I building penetration (Clause 7.4.3.1): low-loss (traditional) and
 %high-loss (thermally efficient, metal-coated IRR glass) building models.
 %The mix is a simulation parameter (params.high_loss_ratio); ITU-R
@@ -92,12 +101,10 @@ if isfield(params,'high_loss_ratio')
 else
     high_loss_ratio = 0;
 end
-%UMa LOS pathloss (Table 7.4.1-1): PL1 below / PL2 above the breakpoint
-%distance d'BP = 4 h'BS h'UT fc/c computed from the EFFECTIVE antenna
-%heights h' = h - hE, where the environment height hE follows Note 1
-PL1_UMa = @(d3D) 28.0 + 22*log10(d3D) + 20*log10(fc_GHz);
-PL2_UMa = @(d3D,dBP,hUTk) 28.0 + 40*log10(d3D) + 20*log10(fc_GHz) ...
-                 - 9*log10(dBP^2 + (hBS - hUTk)^2);
+%SMa LOS pathloss below the breakpoint (Table 7.4.1-1); PL2 above the
+%breakpoint is PL1 evaluated at d_BP plus 40log10(d3D/d_BP)
+PL1_SMa = @(d3D) 20*log10(40*pi*d3D*fc_GHz/3) + min(0.03*h_bldg^1.72,10)*log10(d3D) ...
+                 - min(0.044*h_bldg^1.72,14.77) + 0.002*log10(h_bldg)*d3D;
 
 %Inter-UE (CPE/NCR -> user) links: the NCR access link is modelled as a
 %SMALL CELL using the TR 38.901 UMi-Street-Canyon models (Table 7.4.1-1
@@ -145,7 +152,6 @@ end
 %per-site latent stores returned in mobState for the next snapshot
 shadowSiteStore = zeros(K,M_sites);
 LOSsiteStore = false(M_sites,K);
-hEStore = ones(M_sites,K); %effective environment height hE (m), Note 1 of Table 7.4.1-1
 LOSueStore = false(K_FWA,K); %LOS state of each CPE/NCR -> user link (UMi model)
 %Compute alternative AP locations by using wrap around
 wrapHorizontal = repmat([-coverageRange_sub6 0 coverageRange_sub6],[3 1]);
@@ -154,8 +160,8 @@ wrapLocations = wrapHorizontal(:)' + 1i*wrapVertical(:)';
 APpositionsWrapped = repmat(APpositions,[1 length(wrapLocations)]) + repmat(wrapLocations,[M_sectors 1]);
 
 %Prepare to store shadowing correlation matrix. The BS-side field is
-%normalized to unit variance and scaled per link by the UMa shadow
-%fading std (4 dB LOS, 6 dB NLOS)
+%normalized to unit variance and scaled per link by the SMa shadow
+%fading std (4/6 dB LOS below/above breakpoint, 8 dB NLOS)
 shadowCorrMatrix = ones(K,K);
 shadowAPrealizations = zeros(K,M_sectors);
 
@@ -183,36 +189,63 @@ if evolveMode
     hUT = mobState.hUT;
     O2IdB = mobState.O2IdB;
 else
-    %residential building height range in floors (TR 38.901 Table 7.2-1
-    %UMa: uniform between 4 and 8 floors)
-    if isfield(params,'building_floors')
-        flr = params.building_floors;
+    %Zone-dependent building heights. Apartment complexes: 2-4 floors;
+    %single-family homes: 1-2 floors; strip mall: single-storey
+    %commercial. Zone of each cellular UE in params.ue_zone (1 =
+    %apartment, 2 = home, 3 = mall); mall-mounted CPEs flagged in
+    %params.cpe_is_mall. Fallbacks keep older callers working.
+    if isfield(params,'apt_floors'), apt_flr = params.apt_floors; else, apt_flr = [4 8]; end
+    if isfield(params,'home_floors'), home_flr = params.home_floors; else, home_flr = [1 2]; end
+    if isfield(params,'ue_zone') && ~isempty(params.ue_zone)
+        ue_zone = params.ue_zone;
     else
-        flr = [4 8];
+        ue_zone = ones(K-K_FWA,1); %default: all apartment-zone
+    end
+    if isfield(params,'cpe_is_mall') && ~isempty(params.cpe_is_mall)
+        cpe_is_mall = params.cpe_is_mall;
+    else
+        cpe_is_mall = false(K_FWA,1);
     end
     hUT = params.hr*ones(K,1);
-    %CPEs are mounted at the TOP FLOOR of their own 4-8 floor building
-    %(floor-model heights, within the <=22.5 m validity range of the UMa
-    %LOS-probability and pathloss models); replaces the legacy fixed
-    %4.5 m two-storey mount
+    %CPE mounting: apartment CPEs at the TOP FLOOR of their 2-4 floor
+    %building; strip-mall CPEs on the single-storey rooftop (~6 m) with
+    %open sightlines - the strategically placed NCR donors
     for k = 1:K_FWA
-        Nfl = randi([flr(1) flr(2)]);
-        hUT(k) = 3*(Nfl - 1) + 1.5;
+        if cpe_is_mall(k)
+            hUT(k) = 6.0;
+        else
+            Nfl = randi([apt_flr(1) apt_flr(2)]);
+            hUT(k) = 3*(Nfl - 1) + 1.5;
+        end
     end
     O2IdB = zeros(K,1);
     for k = K_FWA+1:K
         if isIndoor(k)
-            %UMa floor model (Table 7.2-1): hUT = 3(nfl - 1) + 1.5 with
-            %nfl uniform over the floors of a flr(1)..flr(2) floor building
-            Nfl = randi([flr(1) flr(2)]);
-            nfl = randi([1 Nfl]);
-            hUT(k) = 3*(nfl - 1) + 1.5;
-            d2Din = min(10*rand, 10*rand); %residential depth: min of two U(0,10) m
-            if rand < high_loss_ratio
-                %thermally-efficient (high-loss) building
-                O2IdB(k) = PL_tw_high + 0.5*d2Din + sigma_P_high*randn;
-            else
-                O2IdB(k) = PL_tw + 0.5*d2Din + sigma_P*randn;
+            d2Din = min(10*rand, 10*rand); %depth: min of two U(0,10) m
+            switch ue_zone(k-K_FWA)
+                case 3 %strip mall: single storey, HIGH-LOSS commercial
+                       %(metal-coated IRR glass "currently appears to be
+                       %more predominant in commercial buildings than in
+                       %residential buildings" - ITU-R M.2412 / TR 38.901
+                       %Clause 7.4.3.1)
+                    hUT(k) = 1.5;
+                    O2IdB(k) = PL_tw_high + 0.5*d2Din + sigma_P_high*randn;
+                case 2 %single-family home: 1-2 floors, low-loss
+                    Nfl = randi([home_flr(1) home_flr(2)]);
+                    nfl = randi([1 Nfl]);
+                    hUT(k) = 3*(nfl - 1) + 1.5;
+                    O2IdB(k) = PL_tw + 0.5*d2Din + sigma_P*randn;
+                otherwise %apartment complex: 2-4 floors; residential
+                          %buildings are low-loss unless the caller sets
+                          %a high-loss ratio
+                    Nfl = randi([apt_flr(1) apt_flr(2)]);
+                    nfl = randi([1 Nfl]);
+                    hUT(k) = 3*(nfl - 1) + 1.5;
+                    if rand < high_loss_ratio
+                        O2IdB(k) = PL_tw_high + 0.5*d2Din + sigma_P_high*randn;
+                    else
+                        O2IdB(k) = PL_tw + 0.5*d2Din + sigma_P*randn;
+                    end
             end
         end
     end
@@ -255,25 +288,20 @@ for k = 1:K
         A_H = -min(12*(relAzimuth/phi_3dB)^2, A_max);
         sectorGaindB(l) = G_ant_max - min(-(A_V + A_H), A_max);
     end
-    %LOS state and environment height per site (UMa, Table 7.4.2-1 and
-    %Table 7.4.1-1 Note 1), shared by the co-located sectors of a site
+    %LOS state per site (SMa LOS probability, Table 7.4.2-1: exponential
+    %clutter model over the commercial/residential/vegetation mix),
+    %shared by the co-located sectors of a site, sticky under mobility
     LOSstate = false(M_sectors,1);
-    hE_site = ones(M_sites,1);
-    %UMa high-UT LOS enhancement term C'(hUT)
-    if hUT(k) <= 13
-        C_hUT = 0;
-    else
-        C_hUT = ((hUT(k) - 13)/10)^1.5;
+    invk_sum = (-log(1-r_com)*(h_com - hUT(k)) - log(1-r_res)*max(h_res - hUT(k),0))/(d_clutter*(hBS - hUT(k)));
+    if r_veg > 0
+        invk_sum = invk_sum - log(1-r_veg)*(h_veg - hUT(k))/(d_clutter*(hBS - hUT(k)));
     end
     for s = 1:M_sites
         d2D_site = distanceAPstoUE((s-1)*S+1); %identical for co-located sectors
-        if d2D_site <= 18
+        if d2D_site <= 10
             pLOS = 1;
-            g_d = 0;
         else
-            g_d = (5/4)*(d2D_site/100)^3*exp(-d2D_site/150);
-            pLOS = (18/d2D_site + exp(-d2D_site/63)*(1 - 18/d2D_site)) ...
-                   *(1 + C_hUT*g_d);
+            pLOS = exp(-d2D_site*invk_sum);
         end
         if evolveMode && rand >= min(deltaD(k)/d_LOS,1)
             %sticky LOS state within the correlation distance d_LOS
@@ -281,48 +309,29 @@ for k = 1:K
         else
             LOSstate((s-1)*S+(1:S)) = rand < pLOS;
         end
-        %effective environment height hE (Note 1): 1 m for UTs below
-        %13 m; above, hE = 1 m with probability 1/(1+C) and otherwise
-        %uniform over {12, 15, ..., hUT - 1.5}. Drawn once per user-site
-        %(the surrounding buildings do not move) and frozen thereafter
-        if evolveMode
-            hE_site(s) = mobState.hE(s,k);
-        elseif hUT(k) < 13
-            hE_site(s) = 1;
-        else
-            C_env = C_hUT*g_d;
-            if rand < 1/(1 + C_env)
-                hE_site(s) = 1;
-            else
-                hE_choices = 12:3:(hUT(k) - 1.5);
-                hE_site(s) = hE_choices(randi(numel(hE_choices)));
-            end
-        end
     end
     LOSsiteStore(:,k) = LOSstate(1:S:M_sectors);
-    hEStore(:,k) = hE_site;
-    %UMa pathloss (Table 7.4.1-1) and per-link shadow fading std
+    %SMa pathloss (Table 7.4.1-1) and per-link shadow fading std
     PLdB = zeros(M_sectors,1);
     sigmaSF = zeros(M_sectors,1);
+    dBP = 2*pi*hBS*hUT(k)*params.fc/c0; %breakpoint distance (note 5)
     for l = 1:M_sectors
         d2D = distanceAPstoUE(l);
         d3D = distances(l,k);
-        hE = hE_site(1 + floor((l-1)/S)); %environment height of this site
-        dBP = 4*(hBS - hE)*(hUT(k) - hE)*params.fc/c0; %breakpoint d'BP
-        if d2D < dBP
-            PL_LOS = PL1_UMa(d3D);
-        else
-            PL_LOS = PL2_UMa(d3D,dBP,hUT(k));
-        end
         if LOSstate(l)
-            PLdB(l) = PL_LOS;
-            sigmaSF(l) = 4;
+            if d2D < dBP
+                PLdB(l) = PL1_SMa(d3D);
+                sigmaSF(l) = 4;
+            else
+                PLdB(l) = PL1_SMa(dBP) + 40*log10(d3D/dBP);
+                sigmaSF(l) = 6;
+            end
         else
-            %NLOS: max of the LOS pathloss and the UMa-NLOS expression
-            PL_NLOS = 13.54 + 39.08*log10(d3D) + 20*log10(fc_GHz) ...
-                      - 0.6*(hUT(k) - 1.5);
-            PLdB(l) = max(PL_LOS, PL_NLOS);
-            sigmaSF(l) = 6;
+            PLdB(l) = 161.04 - 7.1*log10(W_street) + 7.5*log10(h_bldg) ...
+                - (24.37 - 3.7*(h_bldg/hBS)^2)*log10(hBS) ...
+                + (43.42 - 3.1*log10(hBS))*(log10(d3D) - 3) ...
+                + 20*log10(fc_GHz) - (3.2*(log10(11.75*hUT(k)))^2 - 4.97);
+            sigmaSF(l) = 8;
         end
     end
     if evolveMode
@@ -538,6 +547,6 @@ end
 
 %Latent-variable state handed to the next temporal-mobility snapshot
 mobState = struct('UEpositions',UEpositions,'shadowSite',shadowSiteStore, ...
-    'LOSstate',LOSsiteStore,'hE',hEStore,'LOS_ue',LOSueStore,'O2IdB',O2IdB,'hUT',hUT, ...
+    'LOSstate',LOSsiteStore,'LOS_ue',LOSueStore,'O2IdB',O2IdB,'hUT',hUT, ...
     'repOrientations',repOrientations,'shadow_ue',shadowCPErealizations_ue);
 end

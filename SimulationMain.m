@@ -15,10 +15,10 @@ if(isempty(aID))
 end
 %RNG seed.
 rng(str2double(aID),'twister');
-%% Mobility params (TR 38.901 Table 7.2-1 / ITU-R M.2412)
+%% Mobility params (TR 38.901 Table 7.2-5)
 params.MOBILE = 1;
-params.ue_velocity_outdoor = 30/3.6; %in-car UTs: 30 km/h (ITU-R M.2412 Dense Urban eMBB)
-params.ue_velocity_indoor = 3/3.6;   %indoor and pedestrian UTs: 3 km/h (TR 38.901 Table 7.2-1)
+params.ue_velocity_outdoor = 40/3.6; %in-car UTs: 40 km/h (TR 38.901 Table 7.2-5, SMa)
+params.ue_velocity_indoor = 3/3.6;   %indoor and pedestrian UTs: 3 km/h (Table 7.2-5)
 %CSI aging lag: time between channel sounding and its use for precoding.
 %C-band NR runs 30 kHz SCS (0.5 ms slots); with the typical 5 ms
 %SRS/CSI-RS sounding periodicity (configurable per TS 38.214/TS 38.331)
@@ -45,36 +45,55 @@ params.BEAM = 0;
 %%
 
 
-%FWA CPE count per site, swept as a TAKE RATE: the complex holds ~490
-%households (0.122 km^2 x ~10,000 residents/km^2 / 2.5 per household),
-%so 25-100 CPEs spans a ~5-20%% take rate. US FWA serves ~12%% of
+%FWA CPE count per site, swept as a TAKE RATE: each site's apartment
+%ring plus its share of the homes belt hold ~450 households, so 25-100
+%CPEs spans a ~5-20%% take rate. US FWA serves ~12%% of
 %broadband households in mid-2025, ~15%% by early 2026
 %(https://www.telecompetitor.com/fixed-wireless-is-thriving-and-that-could-be-a-problem-report/;
 %https://insights.opensignal.com/2025/10/20/the-state-of-us-fwa-what-impact-has-att-internet-airs-launch-had/dt;
 %https://www.ericsson.com/en/reports-and-papers/mobility-report/dataforecasts/fwa-outlook)
 numCPE_all_arr = 25:25:100; %CPEs per site (take-rate sweep)
+params.cpe_mall_frac = 0.2; %fraction of all CPEs placed strategically on the
+                            %strip-mall rooftop (open sightlines to both sites);
+                            %the rest sit on apartment top floors
 Band = 100e6;
 params.noiseFigure = 9; %receiver noise figure (dB)
 
-%% Urban Macro (UMa) deployment, 3GPP TR 38.901 Table 7.2-1
-params.ISD = 500; %inter-site distance (m), UMa default (Table 7.2-1)
+%% Suburban Macro (SMa) deployment, 3GPP TR 38.901 Table 7.2-5
+%FWA's market case is strongest where fiber is scarce, i.e. suburbs -
+%the urban (UMa) detour is reverted. Two macro sites are deployed
+%CENTRALLY at (+/- ISD/2, 0) along a randomly oriented axis, so the
+%deployment region surrounds them symmetrically.
+params.ISD = 1299; %inter-site distance (m); the smaller of the two SMa
+                   %values listed in Table 7.2-5 (1299 / 1732 m)
 params.deployRange = params.ISD/2; %cell radius (half ISD); sets the wrap-around span
-%Two housing complexes side by side, one per site: CPEs, indoor UEs, and
-%outdoor pedestrians live in the complex; in-car UEs use the ring roads.
-%A separating road of width W_sep is kept between the complexes, so for
-%ISD < 500 m the complex radius shrinks to (ISD - W_sep)/2 instead of
-%letting the complexes touch
-params.W_sep = 20; %separation (road) width between the two complexes (m)
-params.complexRadius = min(200, (params.ISD - params.W_sep)/2);
+%SUBURBAN ZONING, radially per site plus one shared midpoint zone:
+% - apartment complex: ring [min_dist_2D, aptRadius] around each site,
+%   2-4 floor buildings, FWA CPEs on top floors;
+% - single-family homes: ring [aptRadius, homeRadius], 1-2 floors;
+% - strip mall: disc of mallRadius at the ORIGIN - the arterial midpoint
+%   between the two neighbourhoods, classic suburban commercial siting -
+%   single-storey, high-loss commercial construction, FWA CPEs on the
+%   rooftop (strategic NCR donors with open sightlines to both sites);
+% - natural vegetation buffer: ring [homeRadius, deployRange], no users,
+%   entering the SMa LOS model through the vegetation clutter density;
+% - roads: in-car users over [aptRadius, deployRange].
+params.aptRadius = 175;  %apartment-complex ring outer radius (m)
+params.homeRadius = 450; %single-family belt outer radius (m)
+params.mallRadius = 75;  %strip-mall disc radius (m), centred at the origin
+params.apt_floors = [2 4];  %apartment buildings, floors (suburban complexes)
+params.home_floors = [1 2]; %single-family homes, floors
 params.wrap_margin = 30; %guard (m) added to the wrap-around square so wrapped
                          %replicas never coincide with real positions
 params.coverageRange_sub6 = 2*params.deployRange + params.wrap_margin; %wrap-around square length
 params.min_dist_2D = 35; %minimum BS-UT 2D distance (m)
 params.num_antennas_per_gNB = 64;
 params.rho_tot = 10^(0.1*56); %BS Tx power 56 dBm per sector for the 100 MHz band:
-                              %ITU-R M.2412 Dense Urban eMBB (UMa) specifies 49 dBm
-                              %per 20 MHz per TRxP (46 dBm per 10 MHz), i.e. constant
-                              %PSD; scaled to 100 MHz this gives 56 dBm, consistent
+                              %the TR 38.901 clause 7.8 SMa calibration assumptions
+                              %specify "BS Tx power 49 dBm for SMa, bandwidth 20 MHz"
+                              %(same PSD as the ITU-R M.2412 macro configurations);
+                              %scaled at constant PSD to 100 MHz this gives 56 dBm,
+                              %consistent
                               %with commercial 320 W C-band massive-MIMO AAUs. FCC
                               %compliance: peak-beam EIRP PSD = 36 dBm/MHz conducted
                               %+ 8 dBi element + 18.1 dB array gain (64 el.) =
@@ -100,8 +119,8 @@ params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
 params.hr = 1.5; %outdoor UT height (m)
 %CPE mounting height is drawn per CPE in generateSetup.m: top floor of
-%its own 4-8 floor building (see params.building_floors)
-params.ht_bs = 25; %BS antenna height (m), UMa (Table 7.2-1)
+%its apartment building (params.apt_floors) or the strip-mall rooftop
+params.ht_bs = 35; %BS antenna height (m), SMa (Table 7.2-5)
 %% Sectored BS antennas: 3 sectors per site, element pattern per TR 38.901 Table 7.3-1
 params.sectors_per_site = 3;
 sector_offsets = [30; 150; 270]; %sector boresight azimuths within a site (deg)
@@ -111,51 +130,61 @@ params.SLA_V = 30; %side-lobe attenuation, vertical (dB)
 params.A_max = 30; %front-back attenuation (dB)
 params.G_ant_max = 8; %max element gain (dBi)
 %Mechanical downtilt in zenith-angle convention (90 deg = horizon):
-%12 deg downtilt per the TR 38.901 clause 7.8 UMa calibration assumptions
-params.tilt_zenith = 102;
-%% UMa propagation, TR 38.901 Clause 7.4 (pathloss, LOS probability, O2I)
-params.indoor_UT_ratio = 0.8; %fraction of cellular UEs indoors (Table 7.2-1)
-params.building_floors = [4 8]; %residential building height range in floors
-       %(TR 38.901 Table 7.2-1 UMa: uniform 4..8); drives the indoor UE
-       %floor draw and the CPE top-floor mounting height
-params.high_loss_ratio = 0.2; %fraction of indoor UEs in HIGH-LOSS (thermally
-       %efficient, metal-coated IRR glass) buildings, TR 38.901 Clause
-       %7.4.3.1; the mix is a simulation parameter, set to the ITU-R
-       %M.2412 Dense Urban eMBB evaluation value (20% high / 80% low
-       %loss; Rural eMBB uses 100% low loss). High-loss adds ~15 dB of
-       %O2I penetration at 3.7 GHz, creating the coverage holes that
-       %NCRs are designed to fill (TR 38.867)
+%95 deg per the TR 38.901 clause 7.8 SMa calibration for ISD = 1299 m
+%(92 deg for ISD = 1732 m)
+params.tilt_zenith = 95;
+%% SMa propagation, TR 38.901 Clause 7.4 (pathloss, LOS probability, O2I)
+params.h_bldg = 10;  %average building height h (m), SMa default
+params.W_street = 10; %average street width W (m), SMa default
+params.r_vegetation = 0.20; %vegetation clutter density, set to DENSE - the
+                            %highest of the three values defined in TR 38.901
+                            %Table 7.4.2-1 (SMa row): 0 = no vegetation,
+                            %0.10 = sparse, 0.20 = dense; suburban areas have
+                            %"a high variability of foliage density" and more
+                            %vegetation than urban (TR 38.901 clause 7.2)
+params.indoor_UT_ratio = 0.8; %fraction of cellular UEs indoors (Table 7.2-5)
+params.high_loss_ratio = 0; %HIGH-LOSS (IRR-glass) share of RESIDENTIAL
+       %buildings: zero, because "the use of such high-loss glass
+       %currently appears to be more predominant in commercial buildings
+       %than in residential buildings" (ITU-R M.2412 / TR 38.901 Clause
+       %7.4.3.1); the strip mall is commercial and always high-loss
+       %(enforced by zone in generateSetup.m)
 lambda_BS = 5;
 lambda_SC = 0; %no small cells (kept for the result-file format)
 %Active-user densities: GROSS busy-hour concurrently active data users
-%on ANY access network. Dense urban apartment areas hold ~8,000-15,000
-%residents/km^2 (Demographia, http://demographia.com/db-intlsub.htm),
-%consistent with the 4-8 floor UMa building model; a ~10% busy-hour
-%active share - high-data-rate applications in the evening busy hour -
-%gives ~1000 gross active users/km^2 in the complex (sweepable).
-%FWA/WI-FI OFFLOAD: indoor users in broadband-equipped buildings ride
-%the home connection (the FWA CPEs of this study), not cellular. Wi-Fi/
-%femtocell offload carries ~60% of ALL mobile data globally and 66% in
-%the US (Cisco VNI,
+%on ANY access network, per suburban zone. Apartment complexes hold
+%~4,000-6,000 residents/km^2 and single-family suburbs ~1,000-1,500
+%(Demographia, http://demographia.com/db-intlsub.htm); a ~5% busy-hour
+%active share - the top of the typical 3-5% suburban range, reflecting
+%high-data-rate evening applications - gives ~250 and ~60 gross active
+%users/km^2 respectively. The strip mall carries a modest evening crowd
+%(~150/km^2 over its small parcel). Suburban roads carry ~4-15 active
+%in-car users/km^2. The resulting ~12 cellular-active UEs per sector
+%sits near the 10-per-TRxP full-buffer evaluation convention of ITU-R
+%M.2412 / 3GPP TR 38.913.
+%FWA/WI-FI OFFLOAD: cellular guarantees coverage to OUTDOOR users
+%primarily - indoor users ride the home/venue connection (the FWA CPEs
+%of this study). Wi-Fi/femtocell offload carries ~60% of ALL mobile data
+%globally and 66% in the US (Cisco VNI,
 %https://wballiance.com/the-cisco-visual-networking-index-vni-global-mobile-data-traffic-forecast-update-2017-2021/;
 %https://newsroom.cisco.com/c/r/newsroom/en/us/a/y2019/m02/cisco-global-mobile-networks-will-support-more-than-12-billion-mobile-devices-and-iot-connections-by-2022-mobile-traffic-approaching-the-zettabyte-mil.html),
 %concentrated at home where ~81% of US households have home internet
 %(https://insights.opensignal.com/2025/10/20/the-state-of-us-fwa-what-impact-has-att-internet-airs-launch-had/dt);
-%for indoor users of the complex an 80% offload share follows. The
-%CELLULAR-active population is therefore outdoor-dominated: all
-%pedestrians and in-car users, plus the 20% non-offloaded indoor
-%remainder - and the offloaded indoor demand IS the FWA traffic this
-%paper monetizes. THREE cellular user classes as before:
-% - complex INDOOR remainder (3 km/h, O2I loss, floor heights) and
-%   complex OUTDOOR PEDESTRIANS (3 km/h, no O2I, 1.5 m): TR 38.901
-%   Table 7.2-1 (UMa: 80% indoor ratio applies to the GROSS population,
-%   all UTs at 3 km/h);
-% - perimeter-road IN-CAR users (30 km/h): ITU-R M.2412 Dense Urban eMBB
-%   (Table 5b).
-lambda_UE_res_arr = 1000; %500:250:1500; %GROSS active users per km^2 in the complex
-lambda_UE_road_arr = 40;  %20:10:60;     %active in-car users per km^2, perimeter road (paired)
-params.pedestrian_ratio = 0.2; %fraction of complex GROSS actives outdoors as pedestrians
-params.indoor_offload = 0.8;   %fraction of indoor actives on home broadband/FWA
+%an 80% indoor offload share follows, and the offloaded indoor demand IS
+%the FWA traffic this paper monetizes. Cellular user classes:
+% - OUTDOOR PEDESTRIANS (3 km/h, no O2I, 1.5 m) in the apartment ring,
+%   the homes belt, and the mall parking - a pedestrian_ratio share of
+%   each zone's gross actives (TR 38.901 Table 7.2-5 indoor:outdoor);
+% - IN-CAR users (40 km/h, Table 7.2-5) on the roads [aptRadius,
+%   deployRange];
+% - the 20% INDOOR remainder in each zone (3 km/h, zone-specific floor
+%   heights and O2I class).
+lambda_UE_apt_arr = 250; %125:125:500; %GROSS active users per km^2, apartment ring
+lambda_UE_home = 60;     %GROSS active users per km^2, single-family belt
+lambda_UE_mall = 150;    %GROSS active users per km^2, strip-mall parcel
+lambda_UE_road_arr = 10; %4:4:16;       %active in-car users per km^2, roads (paired)
+params.pedestrian_ratio = 0.2; %fraction of each zone's GROSS actives outdoors on foot
+params.indoor_offload = 0.8;   %fraction of indoor actives on home/venue broadband
                                %instead of cellular (Cisco VNI offload + US home
                                %internet penetration, see above)
 params.Lmax = 1;
@@ -262,55 +291,118 @@ for idxBSDensity = 1:length(lambda_BS)
     S = params.sectors_per_site;
     params.numGNB = M_sites*S; %each sector is an independent BS entry
     M_sectors = params.numGNB;
-    Rsite = [0; params.ISD]; %site distances from origin (adjacent sites at ISD)
-    angleSite = 2*pi*rand(M_sites,1);
+    %two sites centred about the origin at (+/- ISD/2) along a randomly
+    %oriented axis; the strip mall sits at their midpoint (the origin)
+    angleSite = 2*pi*rand;
+    Rsite = [-params.ISD/2; params.ISD/2];
     siteLocations = [Rsite.*cos(angleSite), Rsite.*sin(angleSite)];
     params.siteLocations = siteLocations;
     params.locationsBS = kron(siteLocations, ones(S,1)); %sectors co-located at their site
     params.sector_boresights = repmat(sector_offsets, M_sites, 1); %boresight azimuth per BS entry (deg)
     for idxnumCPE = 1:length(numCPE_all_arr) %FWA take-rate sweep
     numCPE_all = numCPE_all_arr(idxnumCPE);
-    %% CPE locations: numCPE_all per site, uniform in the housing complex
-    %annulus [min_dist_2D, complexRadius] around each site
+    %% CPE locations: numCPE_all per site; a cpe_mall_frac share of the
+    %total sits on the strip-mall rooftop at the origin, the rest are
+    %uniform in the apartment rings [min_dist_2D, aptRadius]
     numCPE_tot = M_sites*numCPE_all;
-    RCPE = sqrt(params.min_dist_2D^2 + (params.complexRadius^2 - params.min_dist_2D^2)*rand(numCPE_tot,1));
-    angleCPE = 2*pi*rand(numCPE_tot,1);
-    CPE_locations = kron(siteLocations, ones(numCPE_all,1)) + [RCPE.*cos(angleCPE), RCPE.*sin(angleCPE)];
-    for idxUEDensity = 1:length(lambda_UE_res_arr)
-        %% UE locations: two-density model. Active residential UEs lie in
-        %the housing complex annulus [min_dist_2D, complexRadius] and are
-        %indoors; active in-car UEs lie on the roads in the outer ring
-        %[complexRadius, deployRange] and are outdoors. Counts follow the
-        %busy-hour active-user densities applied to the actual areas
+    n_cpe_mall = round(params.cpe_mall_frac*numCPE_tot);
+    n_cpe_apt = numCPE_tot - n_cpe_mall; %split evenly across the two sites
+    n_apt_site = round(n_cpe_apt/M_sites);
+    n_cpe_apt = M_sites*n_apt_site;
+    n_cpe_mall = numCPE_tot - n_cpe_apt;
+    RCPE = sqrt(params.min_dist_2D^2 + (params.aptRadius^2 - params.min_dist_2D^2)*rand(n_cpe_apt,1));
+    angleCPE = 2*pi*rand(n_cpe_apt,1);
+    CPE_apt = kron(siteLocations, ones(n_apt_site,1)) + [RCPE.*cos(angleCPE), RCPE.*sin(angleCPE)];
+    RMall = params.mallRadius*sqrt(rand(n_cpe_mall,1));
+    angleMall = 2*pi*rand(n_cpe_mall,1);
+    CPE_mall = [RMall.*cos(angleMall), RMall.*sin(angleMall)]; %at the origin
+    CPE_locations = [CPE_apt; CPE_mall];
+    params.cpe_is_mall = [false(n_cpe_apt,1); true(n_cpe_mall,1)];
+    for idxUEDensity = 1:length(lambda_UE_apt_arr)
         lambda_road = lambda_UE_road_arr(min(idxUEDensity,end));
-        A_complex = pi*((params.complexRadius/1000)^2 - (params.min_dist_2D/1000)^2); %residential annulus (km^2)
-        A_road = pi*((params.deployRange/1000)^2 - (params.complexRadius/1000)^2); %perimeter road ring (km^2)
-        numUE_cmplx_gross = ceil(lambda_UE_res_arr(idxUEDensity)*A_complex/S); %per sector, GROSS active in complex (any network)
-        numUE_ped = round(params.pedestrian_ratio*numUE_cmplx_gross); %per sector, outdoor pedestrians (all cellular)
-        %indoor CELLULAR-active remainder after FWA/Wi-Fi offload
-        numUE_ind = round((1 - params.indoor_offload)*(numUE_cmplx_gross - numUE_ped));
-        numUE_cmplx = numUE_ind + numUE_ped; %cellular-active complex users
-        numUE_road = ceil(lambda_road*A_road/S); %per sector, perimeter road (in-car)
-        params.numUE = numUE_cmplx + numUE_road;
+        %% UE construction, per suburban zone. For each zone the GROSS
+        %actives split into outdoor pedestrians (pedestrian_ratio, all
+        %cellular) and indoor users, of which only (1 - indoor_offload)
+        %remain cellular. Every cellular UE carries its zone id, motion
+        %region (centre + annulus) and speed, built here explicitly.
+        A_apt = pi*((params.aptRadius/1000)^2 - (params.min_dist_2D/1000)^2);  %km^2 per site
+        A_home = pi*((params.homeRadius/1000)^2 - (params.aptRadius/1000)^2);  %km^2 per site
+        A_mall = pi*(params.mallRadius/1000)^2;                                %km^2, shared
+        A_roads = pi*((params.deployRange/1000)^2 - (params.aptRadius/1000)^2);%km^2 per site
+        g_apt = ceil(lambda_UE_apt_arr(idxUEDensity)*A_apt);   %gross actives per site
+        g_home = ceil(lambda_UE_home*A_home);                  %gross actives per site
+        g_mall = ceil(lambda_UE_mall*A_mall);                  %gross actives, shared zone
+        n_car = ceil(lambda_road*A_roads);                     %in-car per site (all cellular)
+        ped_apt = round(params.pedestrian_ratio*g_apt);
+        ped_home = round(params.pedestrian_ratio*g_home);
+        ped_mall = round(params.pedestrian_ratio*g_mall);
+        ind_apt = round((1 - params.indoor_offload)*(g_apt - ped_apt));
+        ind_home = round((1 - params.indoor_offload)*(g_home - ped_home));
+        ind_mall = round((1 - params.indoor_offload)*(g_mall - ped_mall));
+        tot_cell = M_sites*(ped_apt + ind_apt + ped_home + ind_home + n_car) ...
+                   + ped_mall + ind_mall;
+        %total padded UP to a multiple of the sector count with extra
+        %single-family pedestrians (the largest, least sensitive class)
+        params.numUE = ceil(tot_cell/M_sectors);
         numUE = params.numUE;
+        n_pad = M_sectors*numUE - tot_cell;
+        %per-UE records: position, zone (1 apt / 2 home / 3 mall),
+        %indoor flag, motion-region centre and annulus, speed
         UE_locations = zeros(M_sectors*numUE,2);
-        isIndoorUE = false(M_sectors*numUE,1);  %propagation class (O2I, floor height)
-        isInComplexUE = false(M_sectors*numUE,1); %motion region and speed class
+        ue_zone = ones(M_sectors*numUE,1);
+        isIndoorUE = false(M_sectors*numUE,1);
+        regionCenterUE = zeros(M_sectors*numUE,1); %complex, filled below
+        r_lo_ue = zeros(M_sectors*numUE,1);
+        r_hi_ue = zeros(M_sectors*numUE,1);
+        v_move_ue = params.ue_velocity_indoor*ones(M_sectors*numUE,1);
+        sitesC = siteLocations(:,1) + 1i*siteLocations(:,2);
+        idx = 0;
+        dropRing = @(c,rin,rout,n) c + sqrt(rin^2 + (rout^2 - rin^2)*rand(n,1)).*exp(2i*pi*rand(n,1));
         for idxSite = 1:M_sites
-            Ncm = S*numUE_cmplx;
-            Nrd = S*numUE_road;
-            Rin = sqrt(params.min_dist_2D^2 + (params.complexRadius^2 - params.min_dist_2D^2)*rand(Ncm,1));
-            Rout = sqrt(params.complexRadius^2 + (params.deployRange^2 - params.complexRadius^2)*rand(Nrd,1));
-            angleUE = 2*pi*rand(Ncm+Nrd,1);
-            RUE = [Rin; Rout];
-            base = (idxSite-1)*(Ncm+Nrd);
-            UE_locations(base+(1:Ncm+Nrd),:) = siteLocations(idxSite,:) + [RUE.*cos(angleUE), RUE.*sin(angleUE)];
-            isInComplexUE(base+(1:Ncm)) = true;
-            %first the indoor users, then the pedestrian tail of the block
-            isIndoorUE(base+(1:Ncm-S*numUE_ped)) = true;
+            zdef = { %count, zone, indoor, centre, r_lo, r_hi, speed
+                ped_apt, 1, false, sitesC(idxSite), params.min_dist_2D, params.aptRadius, params.ue_velocity_indoor;
+                ind_apt, 1, true,  sitesC(idxSite), params.min_dist_2D, params.aptRadius, params.ue_velocity_indoor;
+                ped_home,2, false, sitesC(idxSite), params.aptRadius,   params.homeRadius,params.ue_velocity_indoor;
+                ind_home,2, true,  sitesC(idxSite), params.aptRadius,   params.homeRadius,params.ue_velocity_indoor;
+                n_car,   2, false, sitesC(idxSite), params.aptRadius,   params.deployRange,params.ue_velocity_outdoor};
+            for z = 1:size(zdef,1)
+                n_z = zdef{z,1};
+                if n_z == 0, continue, end
+                pos = dropRing(zdef{z,4}, zdef{z,5}, zdef{z,6}, n_z);
+                UE_locations(idx+(1:n_z),:) = [real(pos), imag(pos)];
+                ue_zone(idx+(1:n_z)) = zdef{z,2};
+                isIndoorUE(idx+(1:n_z)) = zdef{z,3};
+                regionCenterUE(idx+(1:n_z)) = zdef{z,4};
+                r_lo_ue(idx+(1:n_z)) = zdef{z,5};
+                r_hi_ue(idx+(1:n_z)) = zdef{z,6};
+                v_move_ue(idx+(1:n_z)) = zdef{z,7};
+                idx = idx + n_z;
+            end
+        end
+        %shared strip-mall zone at the origin (5 m inner radius keeps the
+        %reflection normal well-defined), then the single-family padding
+        zdef = {
+            ped_mall,3, false, 0, 5, params.mallRadius, params.ue_velocity_indoor;
+            ind_mall,3, true,  0, 5, params.mallRadius, params.ue_velocity_indoor;
+            n_pad,   2, false, sitesC(1+mod(0:n_pad-1,M_sites)).', params.aptRadius, params.homeRadius, params.ue_velocity_indoor};
+        for z = 1:size(zdef,1)
+            n_z = zdef{z,1};
+            if n_z == 0, continue, end
+            ctr = zdef{z,4};
+            if isscalar(ctr), ctr = ctr*ones(n_z,1); else, ctr = ctr(:); end
+            pos = ctr + sqrt(zdef{z,5}^2 + (zdef{z,6}^2 - zdef{z,5}^2)*rand(n_z,1)).*exp(2i*pi*rand(n_z,1));
+            UE_locations(idx+(1:n_z),:) = [real(pos), imag(pos)];
+            ue_zone(idx+(1:n_z)) = zdef{z,2};
+            isIndoorUE(idx+(1:n_z)) = zdef{z,3};
+            regionCenterUE(idx+(1:n_z)) = ctr;
+            r_lo_ue(idx+(1:n_z)) = zdef{z,5};
+            r_hi_ue(idx+(1:n_z)) = zdef{z,6};
+            v_move_ue(idx+(1:n_z)) = zdef{z,7};
+            idx = idx + n_z;
         end
         params.UE_locations = UE_locations;
         params.isIndoorUE = isIndoorUE;
+        params.ue_zone = ue_zone;
         params.numCPE = numCPE_tot;
         params.CPE_locations = CPE_locations;
         params.Band = Band; %Communication bandwidth
@@ -323,12 +415,9 @@ for idxBSDensity = 1:length(lambda_BS)
         %noise power, which is re-applied here
         noise_mW = 10^(0.1*(-174 + 10*log10(Band) + params.noiseFigure));
         P_in_rep_mW = params.rho_tot*noise_mW*sum(params.gainOverNoise_lin(:,1:numCPE_tot).*params.rep_donor_gain,1)';
-        %Per-UE channel aging factor: complex users (indoor and outdoor
-        %pedestrians) move at 3 km/h (TR 38.901 Table 7.2-1 UMa: all UTs
-        %3 km/h), in-car road users at 30 km/h (M.2412 Dense Urban eMBB)
-        v_ue = params.ue_velocity_outdoor*ones(M_sectors*numUE,1);
-        v_ue(isInComplexUE) = params.ue_velocity_indoor;
-        params.mob_rho = besselj(0,2*pi*params.Ts*v_ue*params.fc/params.c);
+        %Per-UE channel aging factor from the per-UE speeds built above
+        %(pedestrians and indoor users 3 km/h, in-car 40 km/h)
+        params.mob_rho = besselj(0,2*pi*params.Ts*v_move_ue*params.fc/params.c);
         params.BETA_interUE = db2pow(gainOverNoisedB_ue);
         %% Enabled-repeater pool order: GREEDY MAXIMUM COVERAGE over the
         %DISADVANTAGED cellular UEs. Eligibility mirrors the rate
@@ -395,12 +484,12 @@ for idxBSDensity = 1:length(lambda_BS)
         snapDcell{1} = D_cell;
         if params.TEMPORAL_MOBILITY && nbrOfSnapshots > 1
             UEpos_t = UE_locations(:,1) + 1i*UE_locations(:,2);
-            siteCenterUE = repelem(siteLocations(:,1) + 1i*siteLocations(:,2), S*numUE, 1);
-            v_move = params.ue_velocity_outdoor*ones(M_sectors*numUE,1);
-            v_move(isInComplexUE) = params.ue_velocity_indoor; %pedestrians too
+            %per-UE motion regions and speeds were built with the zones
+            siteCenterUE = regionCenterUE;
+            v_move = v_move_ue;
             heading = 2*pi*rand(M_sectors*numUE,1);
-            r_lo = params.min_dist_2D*ones(M_sectors*numUE,1); r_lo(~isInComplexUE) = params.complexRadius;
-            r_hi = params.complexRadius*ones(M_sectors*numUE,1); r_hi(~isInComplexUE) = params.deployRange;
+            r_lo = r_lo_ue;
+            r_hi = r_hi_ue;
             for t_snap = 2:nbrOfSnapshots
                 %advance by dt_snap; specular reflection keeps each user
                 %inside its motion region (annulus around its site)
@@ -603,7 +692,7 @@ for idxBSDensity = 1:length(lambda_BS)
                         result_string = strcat('/results_numFWA_',num2str(params.Lmax), 'Lmax_', num2str(numCPE_all),...
                             'CPE_',num2str(lambda_BS(idxBSDensity)),...
                             'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
-                            'lambdaSC_',num2str(lambda_UE_res_arr(idxUEDensity)),...
+                            'lambdaSC_',num2str(lambda_UE_apt_arr(idxUEDensity)),...
                             'lambdaUEres_',num2str(lambda_road),'lambdaUEroad_', ...
                             num2str(deployRange),'deployRange_', ...
                             num2str(params.r_min_FWA/10^6),'min_FWA_rate', ...
@@ -618,10 +707,10 @@ for idxBSDensity = 1:length(lambda_BS)
                         fprintf(fileID,output_categories);
                         formatSpec = '%d,%d,%d,%d,%d,%d,%f,%f,%d,%d,%d,%d,%d,%f,%f,%f,%f\n';
                         fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
-                        lambda_UE_res_arr(idxUEDensity),lambda_road,deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_tot,params.repeat_gain,SI_cancel_arr(idxSI),K_FWA_init,K_FWA_max,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), FWA_se_out);
+                        lambda_UE_apt_arr(idxUEDensity),lambda_road,deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_tot,params.repeat_gain,SI_cancel_arr(idxSI),K_FWA_init,K_FWA_max,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), FWA_se_out);
                         fclose(fileID);
                         % 'lambdaUE_road,','deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','init_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
-                        % lambda_UE_res_arr(idxUEDensity),lambda_road,deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_tot,params.repeat_gain,K_FWA_init,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_init));
+                        % lambda_UE_apt_arr(idxUEDensity),lambda_road,deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_tot,params.repeat_gain,K_FWA_init,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_init));
                     end
                 end %idxSI (SI-cancellation sweep)
             end
