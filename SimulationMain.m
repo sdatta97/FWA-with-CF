@@ -53,9 +53,11 @@ params.BEAM = 0;
 %https://insights.opensignal.com/2025/10/20/the-state-of-us-fwa-what-impact-has-att-internet-airs-launch-had/dt;
 %https://www.ericsson.com/en/reports-and-papers/mobility-report/dataforecasts/fwa-outlook)
 numCPE_all_arr = 25:25:100; %CPEs per site (take-rate sweep)
-params.cpe_mall_frac = 0.2; %fraction of all CPEs placed strategically on the
-                            %strip-mall rooftop (open sightlines to both sites);
-                            %the rest sit on apartment top floors
+params.cpe_mall_frac = 0.2; %fraction of all CPEs on the strip-mall rooftop
+                            %(strategic NCR donors with open sightlines)
+params.cpe_home_frac = 0.4; %fraction of all CPEs on single-family homes in the
+                            %belt - FWA's core market; the remainder sit on
+                            %apartment top floors
 Band = 100e6;
 params.noiseFigure = 9; %receiver noise figure (dB)
 
@@ -228,6 +230,11 @@ params.csi_rs_offset_dB = 0;% CSI-RS EPRE relative to PDSCH EPRE (powerControlOf
 %the effective gain is min(G_max, P_max/P_in)
 rep_gain_arr = 90; %NCR amplification gain G_max (dB), TR 38.867
 params.rep_max_pow_dBm = 33; %NCR maximum output power (dBm), TR 38.867 / TS 38.106
+params.ncr_zf_donor = 1; %1 = interference-aware (max-SINR / regularized
+                         %zero-forcing) donor receive combining at the NCR,
+                         %suppressing the co-channel sites at the donor input
+                         %- the SIR ceiling of the repeated path; 0 = matched
+                         %combining only (ablation)
 params.ncr_rank = 1; %NCR forwarded spatial layers. 1 (default) = Rel-18 NCR:
                      %analog beamforming, a single amplify-and-forward chain,
                      %no digital processing (Carvalho et al., "Network-
@@ -239,7 +246,11 @@ params.ncr_rank = 1; %NCR forwarded spatial layers. 1 (default) = Rel-18 NCR:
                      %across chains; clamped internally to the supported rank)
 num_rep_arr = 1:1:6; %total enabled repeaters; greedy max-coverage attachment
                      %is per donor sector, saturating near one per sector (6)
-params.num_repeater_per_cpe = 1; %repeaters associated per served user (fixed, not swept)
+params.num_repeater_per_cpe = 2; %NCRs attached per assisted user: TWO independent
+                                 %rank-1 amplify-and-forward branches make the
+                                 %composite channel rank-2, restoring the UE's
+                                 %second spatial stream that a single Rel-18 NCR
+                                 %collapses
 params.rep_assist_frac = 0.2;    %fraction of each sector's WEAKEST cellular UEs (cell edge,
                                  %by serving-link large-scale gain) eligible for repeater
                                  %assistance; the rest keep the pure direct path
@@ -301,23 +312,26 @@ for idxBSDensity = 1:length(lambda_BS)
     params.sector_boresights = repmat(sector_offsets, M_sites, 1); %boresight azimuth per BS entry (deg)
     for idxnumCPE = 1:length(numCPE_all_arr) %FWA take-rate sweep
     numCPE_all = numCPE_all_arr(idxnumCPE);
-    %% CPE locations: numCPE_all per site; a cpe_mall_frac share of the
-    %total sits on the strip-mall rooftop at the origin, the rest are
-    %uniform in the apartment rings [min_dist_2D, aptRadius]
+    %% CPE locations: numCPE_all per site across THREE zones - apartment
+    %top floors, single-family rooftops in the homes belt (FWA's core
+    %market), and the strip-mall rooftop at the origin
     numCPE_tot = M_sites*numCPE_all;
     n_cpe_mall = round(params.cpe_mall_frac*numCPE_tot);
-    n_cpe_apt = numCPE_tot - n_cpe_mall; %split evenly across the two sites
-    n_apt_site = round(n_cpe_apt/M_sites);
-    n_cpe_apt = M_sites*n_apt_site;
-    n_cpe_mall = numCPE_tot - n_cpe_apt;
-    RCPE = sqrt(params.min_dist_2D^2 + (params.aptRadius^2 - params.min_dist_2D^2)*rand(n_cpe_apt,1));
-    angleCPE = 2*pi*rand(n_cpe_apt,1);
+    n_home_site = round(params.cpe_home_frac*numCPE_tot/M_sites);
+    n_apt_site = round((numCPE_tot - n_cpe_mall - M_sites*n_home_site)/M_sites);
+    n_cpe_mall = numCPE_tot - M_sites*(n_apt_site + n_home_site);
+    RCPE = sqrt(params.min_dist_2D^2 + (params.aptRadius^2 - params.min_dist_2D^2)*rand(M_sites*n_apt_site,1));
+    angleCPE = 2*pi*rand(M_sites*n_apt_site,1);
     CPE_apt = kron(siteLocations, ones(n_apt_site,1)) + [RCPE.*cos(angleCPE), RCPE.*sin(angleCPE)];
+    RHme = sqrt(params.aptRadius^2 + (params.homeRadius^2 - params.aptRadius^2)*rand(M_sites*n_home_site,1));
+    angleHme = 2*pi*rand(M_sites*n_home_site,1);
+    CPE_home = kron(siteLocations, ones(n_home_site,1)) + [RHme.*cos(angleHme), RHme.*sin(angleHme)];
     RMall = params.mallRadius*sqrt(rand(n_cpe_mall,1));
     angleMall = 2*pi*rand(n_cpe_mall,1);
     CPE_mall = [RMall.*cos(angleMall), RMall.*sin(angleMall)]; %at the origin
-    CPE_locations = [CPE_apt; CPE_mall];
-    params.cpe_is_mall = [false(n_cpe_apt,1); true(n_cpe_mall,1)];
+    CPE_locations = [CPE_apt; CPE_home; CPE_mall];
+    %CPE zone ids: 1 apartment, 2 single-family home, 3 strip mall
+    params.cpe_zone = [ones(M_sites*n_apt_site,1); 2*ones(M_sites*n_home_site,1); 3*ones(n_cpe_mall,1)];
     for idxUEDensity = 1:length(lambda_UE_apt_arr)
         lambda_road = lambda_UE_road_arr(min(idxUEDensity,end));
         %% UE construction, per suburban zone. For each zone the GROSS
@@ -479,9 +493,18 @@ for idxBSDensity = 1:length(lambda_BS)
         snapGain = cell(nbrOfSnapshots,1);
         snapGainUE = cell(nbrOfSnapshots,1);
         snapDcell = cell(nbrOfSnapshots,1);
+        %per-snapshot spatial-correlation CHOLESKY FACTORS: under the
+        %local-scattering model they depend on the users' angles, so
+        %they are captured from generateSetup per snapshot (R_cpe and
+        %R_ue are frozen: CPEs are static and handsets are uncorrelated).
+        %Memory: ~0.1-0.5 GB across snapshots at the largest CPE counts.
+        snapR_gNB = cell(nbrOfSnapshots,1);
+        snapR_int = cell(nbrOfSnapshots,1);
         snapGain{1} = gainOverNoisedB;
         snapGainUE{1} = gainOverNoisedB_ue;
         snapDcell{1} = D_cell;
+        snapR_gNB{1} = R_gNB;
+        snapR_int{1} = R_interue;
         if params.TEMPORAL_MOBILITY && nbrOfSnapshots > 1
             UEpos_t = UE_locations(:,1) + 1i*UE_locations(:,2);
             %per-UE motion regions and speeds were built with the zones
@@ -506,7 +529,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 end
                 params.UE_locations = [real(UEpos_t), imag(UEpos_t)];
                 %seed 0: the RNG stream continues across snapshots
-                [snapGain{t_snap},snapGainUE{t_snap},~,~,~,~,~,~,snapDcell{t_snap},~,~,~,~,~,~,~,~,mobState] = generateSetup(params,0,mobState);
+                [snapGain{t_snap},snapGainUE{t_snap},snapR_gNB{t_snap},~,snapR_int{t_snap},~,~,~,snapDcell{t_snap},~,~,~,~,~,~,~,~,mobState] = generateSetup(params,0,mobState);
             end
             params.UE_locations = UE_locations; %restore the drop positions
         else
@@ -515,16 +538,18 @@ for idxBSDensity = 1:length(lambda_BS)
                 snapGain{t_snap} = gainOverNoisedB;
                 snapGainUE{t_snap} = gainOverNoisedB_ue;
                 snapDcell{t_snap} = D_cell;
+                snapR_gNB{t_snap} = R_gNB;
+                snapR_int{t_snap} = R_interue;
             end
         end
         for idxnumrep = 1:length(num_rep_arr)  
             for idxrepgain = 1:length(rep_gain_arr)
                 params.repeat_gain = rep_gain_arr(idxrepgain); %G_max (dB), recorded in the CSV
-                %Effective per-repeater AMPLITUDE gain: fixed gain capped by
-                %the NCR maximum output power at each repeater's operating
-                %point (TR 38.867: 90 dB / 33 dBm)
-                params.repeat_gain_amp = sqrt(min(10^(0.1*rep_gain_arr(idxrepgain)), ...
-                    10^(0.1*params.rep_max_pow_dBm)./P_in_rep_mW));
+                %full-band donor input power per repeater; the rate
+                %function derives the SUBBAND-SELECTIVE effective gain
+                %from it after attachment (TR 38.867 per-resource
+                %side control)
+                params.rep_P_in_mW = P_in_rep_mW;
                 params.num_repeater_tot = num_rep_arr(idxnumrep); %total repeaters enabled
                 %pool = prefix of the greedy maximum-coverage sequence
                 %computed once per drop above
@@ -545,7 +570,8 @@ for idxBSDensity = 1:length(lambda_BS)
                         params.gainOverNoise_lin = db2pow(snapGain{t_snap});
                         params.BETA_interUE = db2pow(snapGainUE{t_snap});
                         params.D_cell = snapDcell{t_snap};
-                        [params.R_gNB, params.R_interue] = rebuildCorrMatrices(snapGain{t_snap},snapGainUE{t_snap},params.num_antennas_per_gNB,params.N_UE_FWA,numCPE_tot);
+                        params.R_gNB = snapR_gNB{t_snap};
+                        params.R_interue = snapR_int{t_snap};
                         for n = 1:nbrOfRealizations
                             [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
                             rate_dl(:,(t_snap-1)*nbrOfRealizations+n) = compute_link_rates_OFDM_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);         
@@ -561,8 +587,7 @@ for idxBSDensity = 1:length(lambda_BS)
                         params.gainOverNoise_lin = db2pow(snapGain{t_snap});
                         params.BETA_interUE = db2pow(snapGainUE{t_snap});
                         params.D = snapDcell{t_snap};
-                        [R_gNB_t, ~] = rebuildCorrMatrices(snapGain{t_snap},snapGainUE{t_snap},params.num_antennas_per_gNB,params.N_UE_FWA,numCPE_tot);
-                        params.R_gNB = R_gNB_t(:,:,:,1+numCPE_tot:end);
+                        params.R_gNB = snapR_gNB{t_snap}(:,:,:,1+numCPE_tot:end);
                         for n = 1:nbrOfRealizations
                             [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
                             rate_dl(:,(t_snap-1)*nbrOfRealizations+n) = compute_link_rates_OFDM(params, channel_dl, channel_est_dl);         
@@ -721,20 +746,3 @@ end
 tEnd = toc(tStart);
 fprintf('Total runtime: %f seconds\n',tEnd)
 
-function [R_gNB,R_interue] = rebuildCorrMatrices(gaindB,gainUEdB,N,N_UE_FWA,K_FWA)
-%Spatial correlation matrices under i.i.d. fading are scaled identities,
-%so they are rebuilt from a snapshot's gain matrices instead of storing
-%the N x N tensors for every mobility snapshot
-M_sectors = size(gaindB,1);
-K = size(gaindB,2);
-R_gNB = zeros(N,N,M_sectors,K);
-R_interue = zeros(N_UE_FWA,N_UE_FWA,K_FWA,K);
-for k = 1:K
-    for l = 1:M_sectors
-        R_gNB(:,:,l,k) = db2pow(gaindB(l,k))*eye(N);
-    end
-    for l = 1:K_FWA
-        R_interue(:,:,l,k) = db2pow(gainUEdB(l,k))*eye(N_UE_FWA);
-    end
-end
-end 

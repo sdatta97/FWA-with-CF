@@ -60,6 +60,23 @@ decorr_ue = 13; %UMi inter-UE field
 %7.6.3.1-2, macro-scenario LOS state)
 d_LOS = 50;
 
+%Gaussian local scattering: angular standard deviation (deg) of the
+%scattering cluster around the nominal azimuth, applied at the gNB
+%arrays (all links) and at the NCR donor arrays (BS -> CPE links).
+%Closed-form correlation (Bjornson, Hoydis, Sanguinetti, "Massive MIMO
+%Networks", eq. (2.24)): R(l,m) = beta * exp(1i*pi*(l-m)*sin(phi))
+%* exp(-sigma^2/2 * (pi*(l-m)*cos(phi))^2) for a half-wavelength ULA -
+%a Toeplitz matrix built in O(N) and factored once by Cholesky, so the
+%correlated model adds NO per-realization cost (the returned R_gNB /
+%R_cpe / R_interue are CHOLESKY FACTORS, not covariances)
+if isfield(params,'ASD_deg')
+    ASD = params.ASD_deg*pi/180;
+else
+    ASD = 30*pi/180; %paper Section II value
+end
+locScatCol = @(Nant,phi,beta) beta*exp(1i*pi*(0:Nant-1)'*sin(phi)) ...
+    .*exp(-(ASD^2/2)*(pi*(0:Nant-1)'*cos(phi)).^2);
+
 %Sector antenna parameters (element pattern of 3GPP TR 38.901 Table 7.3-1)
 S = params.sectors_per_site;             %sectors per site (co-located BS entries)
 M_sites = M_sectors/S;
@@ -201,21 +218,26 @@ else
     else
         ue_zone = ones(K-K_FWA,1); %default: all apartment-zone
     end
-    if isfield(params,'cpe_is_mall') && ~isempty(params.cpe_is_mall)
-        cpe_is_mall = params.cpe_is_mall;
+    if isfield(params,'cpe_zone') && ~isempty(params.cpe_zone)
+        cpe_zone = params.cpe_zone;
     else
-        cpe_is_mall = false(K_FWA,1);
+        cpe_zone = ones(K_FWA,1); %default: all apartment-mounted
     end
     hUT = params.hr*ones(K,1);
-    %CPE mounting: apartment CPEs at the TOP FLOOR of their 2-4 floor
-    %building; strip-mall CPEs on the single-storey rooftop (~6 m) with
-    %open sightlines - the strategically placed NCR donors
+    %CPE mounting, all OUTDOOR: apartment CPEs at the TOP FLOOR of their
+    %2-4 floor building; single-family CPEs at the top floor of their
+    %1-2 floor home (rooftop/eave mount); strip-mall CPEs on the
+    %single-storey rooftop (~6 m) with open sightlines
     for k = 1:K_FWA
-        if cpe_is_mall(k)
-            hUT(k) = 6.0;
-        else
-            Nfl = randi([apt_flr(1) apt_flr(2)]);
-            hUT(k) = 3*(Nfl - 1) + 1.5;
+        switch cpe_zone(k)
+            case 3 %strip mall
+                hUT(k) = 6.0;
+            case 2 %single-family home
+                Nfl = randi([home_flr(1) home_flr(2)]);
+                hUT(k) = 3*(Nfl - 1) + 1.5;
+            otherwise %apartment
+                Nfl = randi([apt_flr(1) apt_flr(2)]);
+                hUT(k) = 3*(Nfl - 1) + 1.5;
         end
     end
     O2IdB = zeros(K,1);
@@ -278,10 +300,12 @@ for k = 1:K
     %Sector antenna gain (dB) of each sector BS towards UE k, using the
     %element radiation pattern of TR 38.901 Table 7.3-1
     sectorGaindB = zeros(M_sectors,1);
+    relAzBS = zeros(M_sectors,1); %UE bearing relative to each sector boresight (deg)
     for l = 1:M_sectors
         %azimuth of UE k relative to sector boresight, wrapped to [-180,180]
         azimuthToUE = rad2deg(angle(UEposition - APpositionsWrapped(l,whichpos(l))));
         relAzimuth = mod(azimuthToUE - boresights(l) + 180, 360) - 180;
+        relAzBS(l) = relAzimuth;
         %zenith angle of the LOS direction at the BS (90 deg = horizon)
         zenithToUE = 90 + rad2deg(atan(distanceVertical/max(distanceAPstoUE(l),1)));
         A_V = -min(12*((zenithToUE - tilt_zenith)/theta_3dB)^2, SLA_V);
@@ -390,6 +414,7 @@ for k = 1:K
     %from other directions are therefore suppressed by the panel pattern
     %instead of each being caught by its own best-pointing panel, so the
     %repeater does not re-amplify interference at full gain.
+    relAzCPE = zeros(M_sectors,1);
     if k <= K_FWA
         [~,m_donor] = max(gainOverNoisedB(:,k));
         azDonor = rad2deg(angle(APpositionsWrapped(m_donor,whichpos(m_donor)) - UEposition));
@@ -400,6 +425,7 @@ for k = 1:K
             azCPEtoBS = rad2deg(angle(APpositionsWrapped(l,whichpos(l)) - UEposition));
             zenCPEtoBS = 90 - rad2deg(atan(distanceVertical/max(distanceAPstoUE(l),1))); %pointing up at the BS
             relAzimuth = mod(azCPEtoBS - boresight_p + 180, 360) - 180;
+            relAzCPE(l) = relAzimuth; %BS bearing relative to the donor panel
             A_V = -min(12*((zenCPEtoBS - 90)/theta_3dB)^2, SLA_V);
             A_H = -min(12*(relAzimuth/phi_3dB)^2, A_max);
             repDonorGaindB(l,k) = G_ant_max - min(-(A_V + A_H), A_max);
@@ -513,16 +539,25 @@ for k = 1:K
     end
     shadowCPErealizations_ue(k,:) = shadowing_ue;  
 
-    %Inter-UE spatial correlation (i.i.d. fading): scaled identities
+    %Inter-UE links keep i.i.d. fading (handset/CPE service arrays in
+    %rich local clutter): the factor of beta*I is sqrt(beta)*I
     for l = 1:K_FWA
-        R_interue(:,:,l,k) = db2pow(gainOverNoisedB_ue(l,k))*eye(N_UE_FWA);
+        R_interue(:,:,l,k) = sqrt(db2pow(gainOverNoisedB_ue(l,k)))*eye(N_UE_FWA);
     end
     
-    %BS-side spatial correlation (i.i.d. fading): scaled identities
+    %BS-side spatial correlation: Gaussian local scattering around the
+    %link's nominal azimuth at the gNB ULA (all links) and at the NCR
+    %donor array (BS -> CPE links); stored as CHOLESKY FACTORS. Cellular
+    %handsets (R_ue) stay uncorrelated (rich local scattering).
     for l = 1:M_sectors
-        R_gNB(:,:,l,k) = db2pow(gainOverNoisedB(l,k))*eye(N);
+        beta_lk = db2pow(gainOverNoisedB(l,k));
+        Rcol = locScatCol(N, deg2rad(relAzBS(l)), beta_lk);
+        Rfull = toeplitz(Rcol, Rcol');
+        R_gNB(:,:,l,k) = chol(Rfull + 1e-9*beta_lk*eye(N), 'lower');
         if (k<=K_FWA)
-            R_cpe(:,:,l,k) = eye(N_UE_FWA);
+            Rcol = locScatCol(N_UE_FWA, deg2rad(relAzCPE(l)), 1);
+            Rfull = toeplitz(Rcol, Rcol');
+            R_cpe(:,:,l,k) = chol(Rfull + 1e-9*eye(N_UE_FWA), 'lower');
         else
             R_ue(:,:,l,k-K_FWA) = eye(N_UE_cell);
         end

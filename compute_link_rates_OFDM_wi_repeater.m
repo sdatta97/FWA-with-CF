@@ -13,10 +13,8 @@ p_d = params.rho_tot; %total sector power. Constant-PSD convention: channels
 D_FWA = params.D_FWA;
 D_cell = params.D_cell;
 BETA_interUE = params.BETA_interUE;
-%Per-repeater effective AMPLITUDE gain of the NCR forward chain: fixed
-%amplification gain capped by the maximum output power at the repeater's
-%operating point (TR 38.867: 90 dB / 33 dBm), computed in the main script
-rep_gain_amp = params.repeat_gain_amp;
+%NCR forward-chain gain: computed AFTER attachment below, because the
+%NCR forwards SUBBAND-SELECTIVELY (see there)
 %Number of spatial layers the NCR forwards. 1 = Rel-18 NCR (analog
 %beamforming, single amplify-and-forward chain, no digital processing:
 %Carvalho et al., "Network-controlled repeater - an introduction", IEEE
@@ -94,6 +92,38 @@ for k = 1:K-K_FWA
         Rep{k} = servingCPEs(isfinite(vmax));
     end
 end
+%SUBBAND-SELECTIVE FORWARDING (TR 38.867: side control switches the
+%NCR-Fwd ON/OFF and steers beams PER RESOURCE): the NCR amplifies ONLY
+%its attached UEs' OFDMA subbands, not the whole carrier. Consequences:
+% (i) the 33 dBm output cap applies to the forwarded subbands alone -
+%     with constant-PSD input, the input power on a fraction f of the
+%     band is f*P_in, so the effective gain min(G_max, P_max/(f*P_in))
+%     gains 10log10(1/f) dB of headroom over full-band forwarding
+%     (~ +10 dB at typical sector loads);
+% (ii) non-attached UEs' subbands are simply not forwarded, so only
+%     attached UEs carry repeater path components - which is exactly
+%     how H_rep is structured below.
+%Legacy full-band forwarding is used when the caller supplies
+%params.repeat_gain_amp instead of params.rep_P_in_mW.
+if isfield(params,'rep_P_in_mW')
+    n_att = zeros(K_FWA,1); %attached (repeater, UE) pairs per repeater
+    for k = 1:K-K_FWA
+        for kk = 1:numel(Rep{k})
+            n_att(Rep{k}(kk)) = n_att(Rep{k}(kk)) + 1;
+        end
+    end
+    G_max_lin = 10^(0.1*params.repeat_gain);
+    P_max_mW = 10^(0.1*params.rep_max_pow_dBm);
+    rep_gain_amp = zeros(K_FWA,1);
+    for q = 1:K_FWA
+        if n_att(q) > 0
+            f_sub = n_att(q)/sectorLoad(donor_of(q)); %forwarded band fraction
+            rep_gain_amp(q) = sqrt(min(G_max_lin, P_max_mW/(params.rep_P_in_mW(q)*f_sub)));
+        end
+    end
+else
+    rep_gain_amp = params.repeat_gain_amp;
+end
 %Repeater-path component of every sector-to-UE channel, computed once.
 %The NCR applies rank-1 amplify-and-forward BEAMFORMING (TR 38.867 side
 %control enables "transmissions and receptions with improved spatial
@@ -115,7 +145,31 @@ for k = 1:K-K_FWA
         rep_idx = Rep{k}(kk);
         m_donor = donor_of(rep_idx);
         Hd_est = reshape(channel_est_dl_FWA(m_donor,rep_idx,:,:),[N_BS,N_CPE_FWA]);
-        [~,~,Vr] = svd(Hd_est,'econ');
+        if ~isfield(params,'ncr_zf_donor') || params.ncr_zf_donor
+            %ZERO-FORCING-STYLE (max-SINR / regularized ZF) donor receive
+            %combining: the repeated path's SIR ceiling is set at the
+            %donor input, where the co-channel sectors' transmissions
+            %arrive alongside the donor's and are amplified identically.
+            %The receive beams are therefore chosen as the top
+            %generalized eigenvectors of (donor-subspace power,
+            %interference-plus-noise covariance), suppressing the
+            %interfering sites in the combining itself instead of only
+            %favouring the donor. Covariances use the ESTIMATED channels
+            %and the same per-sector donor-panel gains as the composite.
+            Bq = eye(N_CPE_FWA); %captured noise (noise-normalized units)
+            for mm = setdiff(1:M_sectors,m_donor)
+                Hi = reshape(channel_est_dl_FWA(mm,rep_idx,:,:),[N_BS,N_CPE_FWA]);
+                Bq = Bq + (p_d/N_BS)*params.rep_donor_gain(mm,rep_idx)*(Hi'*Hi);
+            end
+            [Vg,Dg] = eig(Hd_est'*Hd_est, Bq, 'vector');
+            [~,ordg] = sort(real(Dg),'descend');
+            Vr = Vg(:,ordg);
+            Vr = Vr./vecnorm(Vr); %unit-norm receive beams per chain
+        else
+            %matched-only donor combining (ablation): dominant donor
+            %directions, no interference awareness
+            [~,~,Vr] = svd(Hd_est,'econ');
+        end
         Hs_est = reshape(channel_interFWA_est(rep_idx,k+K_FWA,:,1:N_UE),[N_CPE_FWA,N_UE]);
         [~,~,Vt] = svd(Hs_est.','econ');
         %forwarding chains: strongest donor direction pairs with strongest
