@@ -140,9 +140,12 @@ end
 H_rep = zeros(M_sectors,K-K_FWA,N_BS,N_UE);
 %estimated counterpart, used only for the gNB beamforming (imperfect CSI)
 H_rep_est = zeros(M_sectors,K-K_FWA,N_BS,N_UE);
+%per-repeater donor receive beams, computed ONCE per attached repeater
+W_r_rep = cell(K_FWA,1);
 for k = 1:K-K_FWA
     for kk = 1:numel(Rep{k})
         rep_idx = Rep{k}(kk);
+        if ~isempty(W_r_rep{rep_idx}), continue, end
         m_donor = donor_of(rep_idx);
         Hd_est = reshape(channel_est_dl_FWA(m_donor,rep_idx,:,:),[N_BS,N_CPE_FWA]);
         if ~isfield(params,'ncr_zf_donor') || params.ncr_zf_donor
@@ -170,6 +173,13 @@ for k = 1:K-K_FWA
             %directions, no interference awareness
             [~,~,Vr] = svd(Hd_est,'econ');
         end
+        W_r_rep{rep_idx} = Vr(:,1:min(ncr_rank,size(Vr,2)));
+    end
+end
+for k = 1:K-K_FWA
+    for kk = 1:numel(Rep{k})
+        rep_idx = Rep{k}(kk);
+        Vr = W_r_rep{rep_idx};
         Hs_est = reshape(channel_interFWA_est(rep_idx,k+K_FWA,:,1:N_UE),[N_CPE_FWA,N_UE]);
         [~,~,Vt] = svd(Hs_est.','econ');
         %forwarding chains: strongest donor direction pairs with strongest

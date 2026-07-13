@@ -53,11 +53,11 @@ params.BEAM = 0;
 %https://insights.opensignal.com/2025/10/20/the-state-of-us-fwa-what-impact-has-att-internet-airs-launch-had/dt;
 %https://www.ericsson.com/en/reports-and-papers/mobility-report/dataforecasts/fwa-outlook)
 numCPE_all_arr = 25:25:100; %CPEs per site (take-rate sweep)
-params.cpe_mall_frac = 0.2; %fraction of all CPEs on the strip-mall rooftop
-                            %(strategic NCR donors with open sightlines)
-params.cpe_home_frac = 0.4; %fraction of all CPEs on single-family homes in the
-                            %belt - FWA's core market; the remainder sit on
-                            %apartment top floors
+params.cpe_mall_frac = 0.10; %fraction of all CPEs on the strip-mall rooftop
+params.cpe_home_frac = 0.35; %fraction on single-family homes (FWA's core market)
+params.cpe_op_frac = 0.20;   %fraction on office-park rooftops in the outer belt
+                             %- the CPE hosts nearest the noise-limited edge;
+                             %the remainder sit on apartment top floors
 Band = 100e6;
 params.noiseFigure = 9; %receiver noise figure (dB)
 
@@ -66,8 +66,11 @@ params.noiseFigure = 9; %receiver noise figure (dB)
 %the urban (UMa) detour is reverted. Two macro sites are deployed
 %CENTRALLY at (+/- ISD/2, 0) along a randomly oriented axis, so the
 %deployment region surrounds them symmetrically.
-params.ISD = 1299; %inter-site distance (m); the smaller of the two SMa
-                   %values listed in Table 7.2-5 (1299 / 1732 m)
+params.ISD = 1732; %inter-site distance (m); the LARGER of the two SMa
+                   %values listed in Table 7.2-5 (1299 / 1732 m), giving a
+                   %coverage-limited cell edge where the NCR mechanisms can
+                   %convert their link-budget gains into rate; the extra
+                   %area fills with vegetation and roads (below)
 params.deployRange = params.ISD/2; %cell radius (half ISD); sets the wrap-around span
 %SUBURBAN ZONING, radially per site plus one shared midpoint zone:
 % - apartment complex: ring [min_dist_2D, aptRadius] around each site,
@@ -77,12 +80,27 @@ params.deployRange = params.ISD/2; %cell radius (half ISD); sets the wrap-around
 %   between the two neighbourhoods, classic suburban commercial siting -
 %   single-storey, high-loss commercial construction, FWA CPEs on the
 %   rooftop (strategic NCR donors with open sightlines to both sites);
+% - office parks: n_officepark small discs per site at opDist on the
+%   outer roads, low-rise HIGH-LOSS commercial buildings (same M.2412
+%   commercial-glass observation as the mall) hosting rooftop CPEs;
 % - natural vegetation buffer: ring [homeRadius, deployRange], no users,
-%   entering the SMa LOS model through the vegetation clutter density;
-% - roads: in-car users over [aptRadius, deployRange].
+%   entering the SMa LOS model through the vegetation clutter density -
+%   at ISD 1732 this belt spans 450-866 m, filling the larger cell;
+% - roads: in-car users over [aptRadius, deployRange], whose area (and
+%   hence user count) grows with the ISD.
 params.aptRadius = 175;  %apartment-complex ring outer radius (m)
 params.homeRadius = 450; %single-family belt outer radius (m)
 params.mallRadius = 75;  %strip-mall disc radius (m), centred at the origin
+%OFFICE PARKS: smaller commercial clusters on the arterial roads in the
+%outer belt - low-rise office buildings with FWA CPEs on their rooftops,
+%whose co-located NCRs sit close to the noise-limited road users at the
+%coverage-limited cell edge (the CPE-hosted deployment logic of the
+%paper: repeaters go where subscriber equipment already is)
+params.n_officepark = 2; %office parks per site
+params.opRadius = 60;    %office-park parcel radius (m)
+params.opDist = 600;     %office-park centre distance from its site (m),
+                         %on the roads between the homes belt and the edge
+params.op_floors = [2 3]; %low-rise office buildings, floors
 params.apt_floors = [2 4];  %apartment buildings, floors (suburban complexes)
 params.home_floors = [1 2]; %single-family homes, floors
 params.wrap_margin = 30; %guard (m) added to the wrap-around square so wrapped
@@ -132,9 +150,9 @@ params.SLA_V = 30; %side-lobe attenuation, vertical (dB)
 params.A_max = 30; %front-back attenuation (dB)
 params.G_ant_max = 8; %max element gain (dBi)
 %Mechanical downtilt in zenith-angle convention (90 deg = horizon):
-%95 deg per the TR 38.901 clause 7.8 SMa calibration for ISD = 1299 m
-%(92 deg for ISD = 1732 m)
-params.tilt_zenith = 95;
+%92 deg per the TR 38.901 clause 7.8 SMa calibration for ISD = 1732 m
+%(95 deg for ISD = 1299 m)
+params.tilt_zenith = 92;
 %% SMa propagation, TR 38.901 Clause 7.4 (pathloss, LOS probability, O2I)
 params.h_bldg = 10;  %average building height h (m), SMa default
 params.W_street = 10; %average street width W (m), SMa default
@@ -184,6 +202,9 @@ lambda_SC = 0; %no small cells (kept for the result-file format)
 lambda_UE_apt_arr = 250; %125:125:500; %GROSS active users per km^2, apartment ring
 lambda_UE_home = 60;     %GROSS active users per km^2, single-family belt
 lambda_UE_mall = 150;    %GROSS active users per km^2, strip-mall parcel
+lambda_UE_op = 200;      %GROSS active users per km^2, office-park parcels
+                         %(sparse evening staff/visitors; the parks' main
+                         %role in the busy hour is hosting CPEs/NCRs)
 lambda_UE_road_arr = 10; %4:4:16;       %active in-car users per km^2, roads (paired)
 params.pedestrian_ratio = 0.2; %fraction of each zone's GROSS actives outdoors on foot
 params.indoor_offload = 0.8;   %fraction of indoor actives on home/venue broadband
@@ -316,10 +337,19 @@ for idxBSDensity = 1:length(lambda_BS)
     %top floors, single-family rooftops in the homes belt (FWA's core
     %market), and the strip-mall rooftop at the origin
     numCPE_tot = M_sites*numCPE_all;
+    %office-park centres: n_officepark per site at opDist, random azimuths
+    opC = zeros(M_sites*params.n_officepark,1);
+    for idxSite = 1:M_sites
+        thOP = 2*pi*rand(params.n_officepark,1);
+        opC((idxSite-1)*params.n_officepark+(1:params.n_officepark)) = ...
+            siteLocations(idxSite,1) + 1i*siteLocations(idxSite,2) + params.opDist*exp(1i*thOP);
+    end
+    n_parks = numel(opC);
     n_cpe_mall = round(params.cpe_mall_frac*numCPE_tot);
+    n_cpe_op = round(params.cpe_op_frac*numCPE_tot);
     n_home_site = round(params.cpe_home_frac*numCPE_tot/M_sites);
-    n_apt_site = round((numCPE_tot - n_cpe_mall - M_sites*n_home_site)/M_sites);
-    n_cpe_mall = numCPE_tot - M_sites*(n_apt_site + n_home_site);
+    n_apt_site = round((numCPE_tot - n_cpe_mall - n_cpe_op - M_sites*n_home_site)/M_sites);
+    n_cpe_op = numCPE_tot - M_sites*(n_apt_site + n_home_site) - n_cpe_mall;
     RCPE = sqrt(params.min_dist_2D^2 + (params.aptRadius^2 - params.min_dist_2D^2)*rand(M_sites*n_apt_site,1));
     angleCPE = 2*pi*rand(M_sites*n_apt_site,1);
     CPE_apt = kron(siteLocations, ones(n_apt_site,1)) + [RCPE.*cos(angleCPE), RCPE.*sin(angleCPE)];
@@ -329,9 +359,14 @@ for idxBSDensity = 1:length(lambda_BS)
     RMall = params.mallRadius*sqrt(rand(n_cpe_mall,1));
     angleMall = 2*pi*rand(n_cpe_mall,1);
     CPE_mall = [RMall.*cos(angleMall), RMall.*sin(angleMall)]; %at the origin
-    CPE_locations = [CPE_apt; CPE_home; CPE_mall];
-    %CPE zone ids: 1 apartment, 2 single-family home, 3 strip mall
-    params.cpe_zone = [ones(M_sites*n_apt_site,1); 2*ones(M_sites*n_home_site,1); 3*ones(n_cpe_mall,1)];
+    %office-park CPEs: round-robin across the parks, uniform in each parcel
+    parkOfCPE = 1 + mod(0:n_cpe_op-1, n_parks)';
+    posOP = opC(parkOfCPE) + params.opRadius*sqrt(rand(n_cpe_op,1)).*exp(2i*pi*rand(n_cpe_op,1));
+    CPE_op = [real(posOP), imag(posOP)];
+    CPE_locations = [CPE_apt; CPE_home; CPE_mall; CPE_op];
+    %CPE zone ids: 1 apartment, 2 single-family home, 3 strip mall, 4 office park
+    params.cpe_zone = [ones(M_sites*n_apt_site,1); 2*ones(M_sites*n_home_site,1); ...
+                       3*ones(n_cpe_mall,1); 4*ones(n_cpe_op,1)];
     for idxUEDensity = 1:length(lambda_UE_apt_arr)
         lambda_road = lambda_UE_road_arr(min(idxUEDensity,end));
         %% UE construction, per suburban zone. For each zone the GROSS
@@ -346,15 +381,19 @@ for idxBSDensity = 1:length(lambda_BS)
         g_apt = ceil(lambda_UE_apt_arr(idxUEDensity)*A_apt);   %gross actives per site
         g_home = ceil(lambda_UE_home*A_home);                  %gross actives per site
         g_mall = ceil(lambda_UE_mall*A_mall);                  %gross actives, shared zone
+        A_park = pi*(params.opRadius/1000)^2;                  %km^2 per office park
+        g_park = ceil(lambda_UE_op*A_park);                    %gross actives per park
         n_car = ceil(lambda_road*A_roads);                     %in-car per site (all cellular)
         ped_apt = round(params.pedestrian_ratio*g_apt);
         ped_home = round(params.pedestrian_ratio*g_home);
         ped_mall = round(params.pedestrian_ratio*g_mall);
+        ped_park = round(params.pedestrian_ratio*g_park);
         ind_apt = round((1 - params.indoor_offload)*(g_apt - ped_apt));
         ind_home = round((1 - params.indoor_offload)*(g_home - ped_home));
         ind_mall = round((1 - params.indoor_offload)*(g_mall - ped_mall));
+        ind_park = round((1 - params.indoor_offload)*(g_park - ped_park));
         tot_cell = M_sites*(ped_apt + ind_apt + ped_home + ind_home + n_car) ...
-                   + ped_mall + ind_mall;
+                   + ped_mall + ind_mall + n_parks*(ped_park + ind_park);
         %total padded UP to a multiple of the sector count with extra
         %single-family pedestrians (the largest, least sensitive class)
         params.numUE = ceil(tot_cell/M_sectors);
@@ -399,6 +438,12 @@ for idxBSDensity = 1:length(lambda_BS)
             ped_mall,3, false, 0, 5, params.mallRadius, params.ue_velocity_indoor;
             ind_mall,3, true,  0, 5, params.mallRadius, params.ue_velocity_indoor;
             n_pad,   2, false, sitesC(1+mod(0:n_pad-1,M_sites)).', params.aptRadius, params.homeRadius, params.ue_velocity_indoor};
+        %office-park users, one block per park (zone 4)
+        for pk = 1:n_parks
+            zdef = [zdef;
+                {ped_park,4, false, opC(pk), 5, params.opRadius, params.ue_velocity_indoor;
+                 ind_park,4, true,  opC(pk), 5, params.opRadius, params.ue_velocity_indoor}]; %#ok<AGROW>
+        end
         for z = 1:size(zdef,1)
             n_z = zdef{z,1};
             if n_z == 0, continue, end

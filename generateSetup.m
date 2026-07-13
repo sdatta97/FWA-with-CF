@@ -213,6 +213,7 @@ else
     %params.cpe_is_mall. Fallbacks keep older callers working.
     if isfield(params,'apt_floors'), apt_flr = params.apt_floors; else, apt_flr = [4 8]; end
     if isfield(params,'home_floors'), home_flr = params.home_floors; else, home_flr = [1 2]; end
+    if isfield(params,'op_floors'), op_flr = params.op_floors; else, op_flr = [2 3]; end
     if isfield(params,'ue_zone') && ~isempty(params.ue_zone)
         ue_zone = params.ue_zone;
     else
@@ -230,6 +231,9 @@ else
     %single-storey rooftop (~6 m) with open sightlines
     for k = 1:K_FWA
         switch cpe_zone(k)
+            case 4 %office park: top floor of a low-rise office building
+                Nfl = randi([op_flr(1) op_flr(2)]);
+                hUT(k) = 3*(Nfl - 1) + 1.5;
             case 3 %strip mall
                 hUT(k) = 6.0;
             case 2 %single-family home
@@ -245,6 +249,12 @@ else
         if isIndoor(k)
             d2Din = min(10*rand, 10*rand); %depth: min of two U(0,10) m
             switch ue_zone(k-K_FWA)
+                case 4 %office park: low-rise, HIGH-LOSS commercial (same
+                       %M.2412 commercial-glass observation as the mall)
+                    Nfl = randi([op_flr(1) op_flr(2)]);
+                    nfl = randi([1 Nfl]);
+                    hUT(k) = 3*(nfl - 1) + 1.5;
+                    O2IdB(k) = PL_tw_high + 0.5*d2Din + sigma_P_high*randn;
                 case 3 %strip mall: single storey, HIGH-LOSS commercial
                        %(metal-coated IRR glass "currently appears to be
                        %more predominant in commercial buildings than in
