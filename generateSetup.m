@@ -11,7 +11,6 @@ function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotInd
 M_sectors = size(params.locationsBS,1);
 K_FWA = params.numCPE;
 K = M_sectors*params.numUE+params.numCPE;
-Lmax = params.Lmax;
 N = params.num_antennas_per_gNB;
 N_UE_FWA = params.N_UE_FWA;
 N_UE_cell = params.N_UE_cell;
@@ -579,9 +578,14 @@ end
 %Sector association: gainOverNoisedB includes the sector antenna pattern
 %gain, so picking the strongest BS entries maps each CPE/UE to the
 %sector(s) whose beam covers it
+%Sectored deployment: every CPE is served by its single strongest
+%sector, mirroring the cellular association below. (The legacy
+%cell-free Lmax multi-AP association was removed: with co-located
+%sectors it could double-serve a CPE from one site and made
+%donor_of pick the lowest-indexed rather than the strongest sector.)
 for k = 1:K_FWA
     [~, idxs] = sort(gainOverNoisedB(:,k), 'descend');
-    idxs_not_chosen = idxs((Lmax+1):end);
+    idxs_not_chosen = idxs(2:end);
     D_FWA(idxs_not_chosen,k) = 0;
 end
 for k = 1:K-K_FWA

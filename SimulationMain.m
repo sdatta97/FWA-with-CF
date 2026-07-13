@@ -45,19 +45,31 @@ params.BEAM = 0;
 %%
 
 
-%FWA CPE count per site, swept as a TAKE RATE: each site's apartment
-%ring plus its share of the homes belt hold ~450 households, so 25-100
-%CPEs spans a ~5-20%% take rate. US FWA serves ~12%% of
-%broadband households in mid-2025, ~15%% by early 2026
+%FWA CPE deployment: potential CPE SITES follow the BUILDING INVENTORY
+%(one per apartment block, single-family home, office building, and mall
+%unit), and the sweep is the TAKE RATE applied to that inventory. US FWA
+%serves ~12%% of broadband households in mid-2025, ~15%% by early 2026
 %(https://www.telecompetitor.com/fixed-wireless-is-thriving-and-that-could-be-a-problem-report/;
 %https://insights.opensignal.com/2025/10/20/the-state-of-us-fwa-what-impact-has-att-internet-airs-launch-had/dt;
-%https://www.ericsson.com/en/reports-and-papers/mobility-report/dataforecasts/fwa-outlook)
-numCPE_all_arr = 25:25:100; %CPEs per site (take-rate sweep)
-params.cpe_mall_frac = 0.10; %fraction of all CPEs on the strip-mall rooftop
-params.cpe_home_frac = 0.35; %fraction on single-family homes (FWA's core market)
-params.cpe_op_frac = 0.20;   %fraction on office-park rooftops in the outer belt
-                             %- the CPE hosts nearest the noise-limited edge;
-                             %the remainder sit on apartment top floors
+%https://www.ericsson.com/en/reports-and-papers/mobility-report/dataforecasts/fwa-outlook),
+%so 5-20%% brackets the market. The inventory derives from the RESIDENT
+%densities and household size below, keeping CPE supply proportional to
+%the population it serves (previously the CPE count was static while the
+%user population grew - the inconsistency this fixes).
+take_rate_arr = 0.05:0.05:0.20; %RESIDENTIAL FWA take rate applied to the
+                                %apartment-block and single-family inventory
+params.take_rate_biz = 0.95; %BUSINESS take rate for the commercial inventory
+       %(office buildings, mall units): "nearly all businesses (95%)
+       %report having at least one broadband Internet connection" (FCC
+       %Business Broadband Capability Survey,
+       %https://www.fcc.gov/document/business-broadband-capability-survey-results;
+       %see also https://advocacy.sba.gov/2026/01/13/issue-brief-no-23-small-businesses-access-to-broadband-internet/);
+       %in this FWA-served deployment those connections are the CPEs
+params.hh_size = 2.5;  %persons per household (US Census ~2.5)
+params.n_apt_blocks = 24; %apartment blocks per complex (one potential
+                          %building CPE each, serving the block as an MDU)
+params.n_op_bldg = 3;  %office buildings per office park (one potential CPE each)
+params.n_mall_units = 6; %strip-mall anchor units (one potential CPE each, shared zone)
 Band = 100e6;
 params.noiseFigure = 9; %receiver noise figure (dB)
 
@@ -199,6 +211,11 @@ lambda_SC = 0; %no small cells (kept for the result-file format)
 %   deployRange];
 % - the 20% INDOOR remainder in each zone (3 km/h, zone-specific floor
 %   heights and O2I class).
+%resident densities (the demographic source for BOTH actives and the
+%CPE building inventory); the lambda sweep below varies the busy-hour
+%ACTIVITY share, not the residents
+params.rho_res_apt = 5000;  %residents per km^2, apartment ring
+params.rho_res_home = 1200; %residents per km^2, single-family belt
 lambda_UE_apt_arr = 250; %125:125:500; %GROSS active users per km^2, apartment ring
 lambda_UE_home = 60;     %GROSS active users per km^2, single-family belt
 lambda_UE_mall = 150;    %GROSS active users per km^2, strip-mall parcel
@@ -210,7 +227,10 @@ params.pedestrian_ratio = 0.2; %fraction of each zone's GROSS actives outdoors o
 params.indoor_offload = 0.8;   %fraction of indoor actives on home/venue broadband
                                %instead of cellular (Cisco VNI offload + US home
                                %internet penetration, see above)
-params.Lmax = 1;
+%params.Lmax = 1; %RETIRED: the sectored deployment always serves each
+                  %user from its single strongest sector; the legacy
+                  %cell-free Lmax multi-AP association was removed from
+                  %generateSetup.m
 params.preLogFactor = 1;
 params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
 %FWA multi-user/inter-cell interference suppression factor gamma_I (dB):
@@ -302,16 +322,28 @@ params.nbrOfSnapshots = 5;     %mobility units per seed (layer 2)
 params.nbrOfRealizations = 10; %fading realizations per snapshot (layer 3)
 params.dt_snap = 1;            %time between mobility snapshots (s)
 
-%Minimum guaranteed FWA rate per subscriber-plan tier (swept). Values
-%span the US 5G-FWA plan landscape (Q4 2024): 50 Mbps entry floor,
-%100 Mbps = FCC fixed-broadband benchmark and common base plan,
-%150-200 Mbps = current median delivered speeds (Verizon/AT&T ~150,
-%T-Mobile ~205), 300 Mbps = Verizon 5G Home standard-plan soft cap;
-%the gigabit "Ultimate" tier is captured by params.r_max_FWA = 1 Gbps.
-%Refs: Light Reading (https://www.lightreading.com/fixed-wireless-access/verizon-and-t-mobile-fwa-speeds-are-actually-increasing),
-%tecknexus (https://tecknexus.com/t-mobile-verizon-and-att-boost-5g-fwa-speeds-and-subscribers/),
-%Verizon FWA guide (https://www.verizon.com/home/internet/guides/what-is-fixed-wireless-access-fwa-technology/).
-r_min_arr = 1e6*(50:50:300);
+%Two static FWA DEMAND CONFIGURATIONS: per-CPE minimum rates by zone
+%[apt-block, home, mall, office], anchored to the US FWA plan landscape.
+%LOW = the lower end of expected demand per building class; HIGH = the
+%upper end. Residential plans span ~50 Mbps entry to ~300 Mbps top
+%standard plans (Light Reading,
+%https://www.lightreading.com/fixed-wireless-access/verizon-and-t-mobile-fwa-speeds-are-actually-increasing;
+%tecknexus, https://tecknexus.com/t-mobile-verizon-and-att-boost-5g-fwa-speeds-and-subscribers/;
+%Verizon FWA guide, https://www.verizon.com/home/internet/guides/what-is-fixed-wireless-access-fwa-technology/).
+%Business FWA plans run 100/200/400 Mbps (Verizon Business 5G Internet,
+%https://www.verizon.com/business/products/internet/5g/): office and
+%mall CPEs take 100 at the low end, 200 (the mid business tier) in the
+%MID config, and 500 at the high end (top business tier plus margin for
+%multi-tenant units). The apartment-block CPE serves an MDU (several
+%units behind one CPE): base = the 100 Mbps FCC fixed-broadband
+%benchmark tier; mid = 300 (the top standard residential plan as an MDU
+%aggregate); high = 500 (assumption, flagged: between the top
+%residential plan and the gigabit tier). The MID home rate of 150 Mbps
+%is the median delivered US FWA speed (Verizon/AT&T ~150, cited above).
+%              zone:   apt   home   mall  office
+fwa_demand_configs = 1e6*[100    50    100    100;   %LOW demand config
+                          300   150    200    200;   %MID demand config
+                          500   300    500    500];  %HIGH demand config
 %% Simulation FR1 setup
 for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations: macro sites, each split into 3 co-located sector BSs
@@ -331,12 +363,10 @@ for idxBSDensity = 1:length(lambda_BS)
     params.siteLocations = siteLocations;
     params.locationsBS = kron(siteLocations, ones(S,1)); %sectors co-located at their site
     params.sector_boresights = repmat(sector_offsets, M_sites, 1); %boresight azimuth per BS entry (deg)
-    for idxnumCPE = 1:length(numCPE_all_arr) %FWA take-rate sweep
-    numCPE_all = numCPE_all_arr(idxnumCPE);
+    for idxnumCPE = 1:length(take_rate_arr) %FWA take-rate sweep over the inventory
     %% CPE locations: numCPE_all per site across THREE zones - apartment
     %top floors, single-family rooftops in the homes belt (FWA's core
     %market), and the strip-mall rooftop at the origin
-    numCPE_tot = M_sites*numCPE_all;
     %office-park centres: n_officepark per site at opDist, random azimuths
     opC = zeros(M_sites*params.n_officepark,1);
     for idxSite = 1:M_sites
@@ -345,11 +375,22 @@ for idxBSDensity = 1:length(lambda_BS)
             siteLocations(idxSite,1) + 1i*siteLocations(idxSite,2) + params.opDist*exp(1i*thOP);
     end
     n_parks = numel(opC);
-    n_cpe_mall = round(params.cpe_mall_frac*numCPE_tot);
-    n_cpe_op = round(params.cpe_op_frac*numCPE_tot);
-    n_home_site = round(params.cpe_home_frac*numCPE_tot/M_sites);
-    n_apt_site = round((numCPE_tot - n_cpe_mall - n_cpe_op - M_sites*n_home_site)/M_sites);
-    n_cpe_op = numCPE_tot - M_sites*(n_apt_site + n_home_site) - n_cpe_mall;
+    %BUILDING INVENTORY per site: apartment blocks (fixed count per
+    %complex), single-family homes (residents / household size over the
+    %belt area), office buildings, and the shared mall units
+    A_home_inv = pi*((params.homeRadius/1000)^2 - (params.aptRadius/1000)^2); %km^2
+    inv_apt = params.n_apt_blocks;
+    inv_home = round(params.rho_res_home*A_home_inv/params.hh_size);
+    inv_op = params.n_officepark*params.n_op_bldg;
+    take_rate = take_rate_arr(idxnumCPE);
+    n_apt_site = round(take_rate*inv_apt);
+    n_home_site = round(take_rate*inv_home);
+    %commercial zones use the (near-universal) BUSINESS take rate
+    n_op_site = round(params.take_rate_biz*inv_op);
+    n_cpe_mall = round(params.take_rate_biz*params.n_mall_units); %shared zone (total)
+    n_cpe_op = M_sites*n_op_site;
+    numCPE_tot = M_sites*(n_apt_site + n_home_site + n_op_site) + n_cpe_mall;
+    numCPE_all = round(numCPE_tot/M_sites); %per-site nominal, for records
     RCPE = sqrt(params.min_dist_2D^2 + (params.aptRadius^2 - params.min_dist_2D^2)*rand(M_sites*n_apt_site,1));
     angleCPE = 2*pi*rand(M_sites*n_apt_site,1);
     CPE_apt = kron(siteLocations, ones(n_apt_site,1)) + [RCPE.*cos(angleCPE), RCPE.*sin(angleCPE)];
@@ -365,8 +406,10 @@ for idxBSDensity = 1:length(lambda_BS)
     CPE_op = [real(posOP), imag(posOP)];
     CPE_locations = [CPE_apt; CPE_home; CPE_mall; CPE_op];
     %CPE zone ids: 1 apartment, 2 single-family home, 3 strip mall, 4 office park
+    %(the demand tier of each CPE follows its zone; set after cpe_zone below)
     params.cpe_zone = [ones(M_sites*n_apt_site,1); 2*ones(M_sites*n_home_site,1); ...
                        3*ones(n_cpe_mall,1); 4*ones(n_cpe_op,1)];
+    %per-CPE demand rates are set with the demand configuration below
     for idxUEDensity = 1:length(lambda_UE_apt_arr)
         lambda_road = lambda_UE_road_arr(min(idxUEDensity,end));
         %% UE construction, per suburban zone. For each zone the GROSS
@@ -704,8 +747,11 @@ for idxBSDensity = 1:length(lambda_BS)
                         writematrix(rate_dl, strcat(packFolder,'/packing_FWA_',num2str(numCPE_all),'CPE_',num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
                     end
                     Band_FWA = params.Band;
-                    for idxrmin = 1:length(r_min_arr)
-                        params.r_min_FWA = r_min_arr(idxrmin);
+                    for idxrmin = 1:size(fwa_demand_configs,1)
+                        %per-CPE absolute minimum rates for this config;
+                        %the HOME rate labels the config in filenames/CSV
+                        params.fwa_demand_rates = fwa_demand_configs(idxrmin, params.cpe_zone).';
+                        params.r_min_FWA = fwa_demand_configs(idxrmin,2);
                         K_FWA_max = 0;
                         params.Band = Band_FWA;
                         [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
@@ -713,8 +759,12 @@ for idxBSDensity = 1:length(lambda_BS)
                         if (params.Band > 0)
                             while any(mean_rate_dl_FWA > params.r_max_FWA)
                                 CPE_idxs = find(mean_rate_dl_FWA > params.r_max_FWA);
-                                params.Band = params.Band*(1-(params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA))));
-                                rate_dl(CPE_idxs,:) = rate_dl(CPE_idxs,:)*params.r_min_FWA/min(mean_rate_dl_FWA(mean_rate_dl_FWA > params.r_max_FWA));
+                                %scale the cap-exceeders down to (at least)
+                                %their OWN tiered demand, freeing the rest
+                                rmin_vec = params.fwa_demand_rates;
+                                sc = max(rmin_vec(CPE_idxs)./mean_rate_dl_FWA(CPE_idxs));
+                                params.Band = params.Band*(1-sc);
+                                rate_dl(CPE_idxs,:) = rate_dl(CPE_idxs,:)*sc;
                                 mean_rate_dl_FWA(CPE_idxs) = mean(rate_dl(CPE_idxs,:),2);
                                 params.set_repeat = [params.set_repeat; CPE_idxs];
                                 not_set_repeat = setdiff(1:numCPE_tot,params.set_repeat);
@@ -759,7 +809,7 @@ for idxBSDensity = 1:length(lambda_BS)
                 
                         deployRange = params.deployRange;
                         numBS = size(params.locationsBS,1);
-                        result_string = strcat('/results_numFWA_',num2str(params.Lmax), 'Lmax_', num2str(numCPE_all),...
+                        result_string = strcat('/results_numFWA_',num2str(numCPE_all),...
                             'CPE_',num2str(lambda_BS(idxBSDensity)),...
                             'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
                             'lambdaSC_',num2str(lambda_UE_apt_arr(idxUEDensity)),...
