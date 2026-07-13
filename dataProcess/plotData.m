@@ -22,7 +22,8 @@ if isfile(summaryFile)
     legends = cell(numel(reps),1);
     for i = 1:numel(reps)
         rows = summaryTable.num_rep == reps(i);
-        [x,ord] = sort(summaryTable.r_min_FWA(rows)/1e6);
+        [~,x] = ismember(lower(string(summaryTable.demand_profile(rows))), ["low" "medium" "high"]);
+        [x,ord] = sort(x); %profile index: 1=low, 2=medium, 3=high
         y = summaryTable.mean_max_FWA(rows); y = y(ord);
         e = summaryTable.std_max_FWA(rows); e = e(ord);
         e(isnan(e)) = 0; %single-seed data has no spread yet
@@ -37,8 +38,7 @@ if isfile(summaryFile)
     %(b) bandwidth freed for FWA vs the number of enabled NCRs, at the
     %entry-tier plan rate (Fig. 5 of the paper)
     fig = figure; hold on; grid on;
-    tier1 = min(summaryTable.r_min_FWA);
-    rows0 = summaryTable.r_min_FWA == tier1;
+    rows0 = lower(string(summaryTable.demand_profile)) == "low"; %lowest profile
     [x,ord] = sort(summaryTable.num_rep(rows0));
     y = summaryTable.mean_Band_FWA(rows0)/1e6; y = y(ord);
     e = summaryTable.std_Band_FWA(rows0)/1e6; e = e(ord); e(isnan(e)) = 0;

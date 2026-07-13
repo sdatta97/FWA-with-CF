@@ -19,9 +19,10 @@ packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
 %% 1) Combine the sweep CSVs across seeds and summarize
 dinfo = dir(fullfile(sweepDir,'*.csv'));
 dinfo = dinfo(~startsWith({dinfo.name},'summary'));
-%only the current output schema (older runs used fewer columns and
-%cannot be concatenated); 'SI_cancel' in the filename marks it
-dinfo = dinfo(contains({dinfo.name},'SI_cancel'));
+%only the current output schema (older runs used different columns and
+%cannot be concatenated); the activity tag marks the schema that carries
+%the activity, demand_profile and rep_frac columns
+dinfo = dinfo(contains({dinfo.name},'activity_'));
 if ~isempty(dinfo)
     filenames = fullfile({dinfo.folder},{dinfo.name});
     tables = cell(numel(filenames),1);
@@ -34,8 +35,8 @@ if ~isempty(dinfo)
     end
     combinedTable = vertcat(tables{:});
     %group by the configuration columns; summarize the outcome columns
-    groupVars = {'lambdaBS','lambdaSC','numCPE','lambdaUE','lambdaUE_road', ...
-        'deployRange','r_min_cell','r_min_FWA','num_rep','rep_gain','SI_cancel','Band'};
+    groupVars = {'numCPE','activity','deployRange','r_min_cell', ...
+        'demand_profile','num_rep','rep_frac','Band'};
     outcomeVars = {'init_FWA','max_FWA','Band_FWA','cell_se','FWA_se'};
     groupVars = intersect(groupVars, combinedTable.Properties.VariableNames,'stable');
     outcomeVars = intersect(outcomeVars, combinedTable.Properties.VariableNames,'stable');

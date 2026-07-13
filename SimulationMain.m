@@ -40,6 +40,11 @@ params.r_min_cell = 35e6; %cellular DL floor at the 5th percentile: the FCC
                           %offload carries the indoor demand
 params.r_max_FWA = 1e9;   %FWA rate cap = FCC long-term fixed broadband goal (1 Gbps),
                           %also the Verizon 5G Home "Ultimate" gigabit tier
+params.enable_fwa_cap_realloc = 0; %gate for the r_max cap-redistribution loop in the
+                          %FWA phase (K_FWA_max). DISABLED pending review: with
+                          %demands near the cap, one exceeder's max(rmin/rate)
+                          %can claim up to half the shared band per iteration,
+                          %making K_FWA_max cliff-sensitive to ~1% rate changes
 %%
 params.BEAM = 0;
 %%
@@ -181,8 +186,8 @@ params.high_loss_ratio = 0; %HIGH-LOSS (IRR-glass) share of RESIDENTIAL
        %than in residential buildings" (ITU-R M.2412 / TR 38.901 Clause
        %7.4.3.1); the strip mall is commercial and always high-loss
        %(enforced by zone in generateSetup.m)
-lambda_BS = 5;
-lambda_SC = 0; %no small cells (kept for the result-file format)
+%Two FIXED macro sites (M_sites below): the legacy BS-density sweep and
+%its lambdaBS/lambdaSC result-file tags are removed
 %Active-user densities: GROSS busy-hour concurrently active data users
 %on ANY access network, per suburban zone. Apartment complexes hold
 %~4,000-6,000 residents/km^2 and single-family suburbs ~1,000-1,500
@@ -212,17 +217,23 @@ lambda_SC = 0; %no small cells (kept for the result-file format)
 % - the 20% INDOOR remainder in each zone (3 km/h, zone-specific floor
 %   heights and O2I class).
 %resident densities (the demographic source for BOTH actives and the
-%CPE building inventory); the lambda sweep below varies the busy-hour
-%ACTIVITY share, not the residents
+%CPE building inventory); the swept quantity below is the busy-hour
+%DEVICE ACTIVITY share, not the residents
 params.rho_res_apt = 5000;  %residents per km^2, apartment ring
 params.rho_res_home = 1200; %residents per km^2, single-family belt
-lambda_UE_apt_arr = 250; %125:125:500; %GROSS active users per km^2, apartment ring
-lambda_UE_home = 60;     %GROSS active users per km^2, single-family belt
-lambda_UE_mall = 150;    %GROSS active users per km^2, strip-mall parcel
-lambda_UE_op = 200;      %GROSS active users per km^2, office-park parcels
-                         %(sparse evening staff/visitors; the parks' main
+params.activity_ref = 0.05; %REFERENCE busy-hour activity share: the per-zone
+                         %gross-active densities below are the values observed
+                         %at this share (apartment ring = rho_res_apt x 5%)
+activity_arr = 0.025:0.025:0.1; %SWEPT busy-hour device-activity share; every
+                         %zone's gross-active density (and the road density)
+                         %scales linearly with activity_arr/activity_ref
+lambda_UE_apt_base = 250;  %GROSS active users per km^2 at activity_ref, apartment ring
+lambda_UE_home_base = 60;  %GROSS active users per km^2 at activity_ref, single-family belt
+lambda_UE_mall_base = 150; %GROSS active users per km^2 at activity_ref, strip-mall parcel
+lambda_UE_op_base = 200;   %GROSS active users per km^2 at activity_ref, office-park
+                         %parcels (sparse evening staff/visitors; the parks' main
                          %role in the busy hour is hosting CPEs/NCRs)
-lambda_UE_road_arr = 10; %4:4:16;       %active in-car users per km^2, roads (paired)
+lambda_UE_road_base = 10;  %active in-car users per km^2 at activity_ref, roads
 params.pedestrian_ratio = 0.2; %fraction of each zone's GROSS actives outdoors on foot
 params.indoor_offload = 0.8;   %fraction of indoor actives on home/venue broadband
                                %instead of cellular (Cisco VNI offload + US home
@@ -242,9 +253,9 @@ params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
 %and real-time adaptive arrays measure ~30-35 dB null depths, still
 %>20 dB with 3-6 simultaneous interferers (Sensors 2023,
 %https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10386719/). The -20 dB
-%default is conservative against both; sweep -20:5:0 for the
-%suppression-factor SE comparison figure
-SI_cancel_arr = -20; %-20:5:0;
+%value is conservative against both (a -20:5:0 sweep produced the legacy
+%suppression-factor SE-comparison figure; the factor is FIXED now)
+params.SI_cancel_dB = -20;
 params.HW_IMPAIRMENTS = 1;  % 1 = hardware impairments on, 0 = ideal hardware
 %EVM-based impairment factors: an error vector magnitude of e turns a
 %fraction e^2 of the signal power into distortion, so K = 1 - e^2.
@@ -269,7 +280,7 @@ params.csi_rs_offset_dB = 0;% CSI-RS EPRE relative to PDSCH EPRE (powerControlOf
 %network-controlled repeaters"; RF repeater requirements in TS 38.106).
 %The cap is applied per repeater at its actual operating point below, so
 %the effective gain is min(G_max, P_max/P_in)
-rep_gain_arr = 90; %NCR amplification gain G_max (dB), TR 38.867
+params.repeat_gain = 90; %FIXED NCR amplification gain G_max (dB), TR 38.867 (not swept)
 params.rep_max_pow_dBm = 33; %NCR maximum output power (dBm), TR 38.867 / TS 38.106
 params.ncr_zf_donor = 1; %1 = interference-aware (max-SINR / regularized
                          %zero-forcing) donor receive combining at the NCR,
@@ -286,15 +297,37 @@ params.ncr_rank = 1; %NCR forwarded spatial layers. 1 (default) = Rel-18 NCR:
                      %antenna (top singular beam pairs, output power split
                      %across chains; clamped internally to the supported rank)
 num_rep_arr = 1:1:6; %total enabled repeaters; greedy max-coverage attachment
+params.ncr_benefit_gate = 1; %per-UE NCR ON/OFF side control (TR 38.867); =0 only for ablation
                      %is per donor sector, saturating near one per sector (6)
+params.FWA_REPEAT = 1; %1 = HYBRID FWA scheduling with NCR assistance:
+params.rep_assist_frac_fwa = 1; %FWA-side NCR admission: ALL needy CPEs are
+                       %admitted for NCR support, DECOUPLED from the swept
+                       %cellular rep_assist_frac (which only shapes cellular
+                       %eligibility and the greedy pool)
+                       %CPEs that miss their demand on the shared full band
+                       %("needy") get a DEDICATED subband - the satisfied
+                       %CPEs' shared subband shrinks just enough that every
+                       %one still meets its demand (the binding CPE sits
+                       %exactly at its demand), and the freed remainder
+                       %serves the needy CPEs (who ALSO keep their f_sat
+                       %share of the shared band) with NCR-aided MU-MIMO
+                       %(compute_link_rates_MIMO_mmse_wi_repeater.m: same
+                       %pool, donor-sector lock and benefit gate as the
+                       %cellular side; satisfied CPEs may still HOST NCRs).
+                       %The needy-only subband keeps the forwarded stream
+                       %mix small - full-band forwarding under 20+ MU-MIMO
+                       %streams was shown to collapse SINR to the mix's
+                       %per-stream SIR. 0 = repeater-free FWA phase
 params.num_repeater_per_cpe = 2; %NCRs attached per assisted user: TWO independent
                                  %rank-1 amplify-and-forward branches make the
                                  %composite channel rank-2, restoring the UE's
                                  %second spatial stream that a single Rel-18 NCR
                                  %collapses
-params.rep_assist_frac = 0.2;    %fraction of each sector's WEAKEST cellular UEs (cell edge,
-                                 %by serving-link large-scale gain) eligible for repeater
-                                 %assistance; the rest keep the pure direct path
+rep_assist_frac_arr = 0:0.2:1; %swept fraction of each sector's WEAKEST cellular
+                                 %UEs (cell edge, by serving-link large-scale gain)
+                                 %eligible for repeater assistance; the rest keep the
+                                 %pure direct path. 0 disables NCR assistance entirely
+                                 %(no attachments), giving the no-repeater baseline
 %Three layers of randomness, averaged per SLURM array task:
 %  (1) the seed aID fixes the DROP: gNB/CPE/UE locations and the initial
 %      large-scale state;
@@ -341,11 +374,14 @@ params.dt_snap = 1;            %time between mobility snapshots (s)
 %residential plan and the gigabit tier). The MID home rate of 150 Mbps
 %is the median delivered US FWA speed (Verizon/AT&T ~150, cited above).
 %              zone:   apt   home   mall  office
-fwa_demand_configs = 1e6*[100    50    100    100;   %LOW demand config
-                          300   150    200    200;   %MID demand config
-                          500   300    500    500];  %HIGH demand config
+%Named, swept FWA DEMAND PROFILES: per-zone minimum committed rates
+%[apt-block(MDU) home mall office] in Mbps. The profile NAME tags the
+%result filenames and the demand_profile CSV column.
+fwa_demand_names = {'low','medium','high'};
+fwa_demand_configs = 1e6*[100    50    100    100;   %LOW demand profile
+                          300   150    200    200;   %MEDIUM demand profile
+                          500   300    500    500];  %HIGH demand profile
 %% Simulation FR1 setup
-for idxBSDensity = 1:length(lambda_BS)
     %% gNB locations: macro sites, each split into 3 co-located sector BSs
     params.M_sites = 2; %number of macro sites. The TWO-SITE side-by-side
     %topology is structural, not just a parameter: the site placement
@@ -410,8 +446,9 @@ for idxBSDensity = 1:length(lambda_BS)
     params.cpe_zone = [ones(M_sites*n_apt_site,1); 2*ones(M_sites*n_home_site,1); ...
                        3*ones(n_cpe_mall,1); 4*ones(n_cpe_op,1)];
     %per-CPE demand rates are set with the demand configuration below
-    for idxUEDensity = 1:length(lambda_UE_apt_arr)
-        lambda_road = lambda_UE_road_arr(min(idxUEDensity,end));
+    for idxActivity = 1:length(activity_arr) %device-activity sweep
+        act_scale = activity_arr(idxActivity)/params.activity_ref;
+        lambda_road = lambda_UE_road_base*act_scale;
         %% UE construction, per suburban zone. For each zone the GROSS
         %actives split into outdoor pedestrians (pedestrian_ratio, all
         %cellular) and indoor users, of which only (1 - indoor_offload)
@@ -421,11 +458,11 @@ for idxBSDensity = 1:length(lambda_BS)
         A_home = pi*((params.homeRadius/1000)^2 - (params.aptRadius/1000)^2);  %km^2 per site
         A_mall = pi*(params.mallRadius/1000)^2;                                %km^2, shared
         A_roads = pi*((params.deployRange/1000)^2 - (params.aptRadius/1000)^2);%km^2 per site
-        g_apt = ceil(lambda_UE_apt_arr(idxUEDensity)*A_apt);   %gross actives per site
-        g_home = ceil(lambda_UE_home*A_home);                  %gross actives per site
-        g_mall = ceil(lambda_UE_mall*A_mall);                  %gross actives, shared zone
+        g_apt = ceil(lambda_UE_apt_base*act_scale*A_apt);      %gross actives per site
+        g_home = ceil(lambda_UE_home_base*act_scale*A_home);   %gross actives per site
+        g_mall = ceil(lambda_UE_mall_base*act_scale*A_mall);   %gross actives, shared zone
         A_park = pi*(params.opRadius/1000)^2;                  %km^2 per office park
-        g_park = ceil(lambda_UE_op*A_park);                    %gross actives per park
+        g_park = ceil(lambda_UE_op_base*act_scale*A_park);     %gross actives per park
         n_car = ceil(lambda_road*A_roads);                     %in-car per site (all cellular)
         ped_apt = round(params.pedestrian_ratio*g_apt);
         ped_home = round(params.pedestrian_ratio*g_home);
@@ -521,54 +558,6 @@ for idxBSDensity = 1:length(lambda_BS)
         %(pedestrians and indoor users 3 km/h, in-car 40 km/h)
         params.mob_rho = besselj(0,2*pi*params.Ts*v_move_ue*params.fc/params.c);
         params.BETA_interUE = db2pow(gainOverNoisedB_ue);
-        %% Enabled-repeater pool order: GREEDY MAXIMUM COVERAGE over the
-        %DISADVANTAGED cellular UEs. Eligibility mirrors the rate
-        %computation exactly (the weakest rep_assist_frac fraction of
-        %each sector's UEs by serving-link large-scale gain); a repeater
-        %can cover an eligible UE iff its donor sector is the UE's
-        %serving sector and the donor x service link metric is positive.
-        %Each greedy pick covers the most NOT-YET-COVERED eligible UEs
-        %(ties broken by the larger summed metric), and the pool for any
-        %budget is a prefix of the greedy sequence. Greedy maximization
-        %of a coverage (submodular) function is within (1 - 1/e) of the
-        %optimal selection: G. L. Nemhauser, L. A. Wolsey, M. L. Fisher,
-        %"An analysis of approximations for maximizing submodular set
-        %functions - I", Mathematical Programming 14, 265-294 (1978),
-        %https://doi.org/10.1007/BF01588971
-        BETA_FWA_assoc = db2pow(gainOverNoisedB(:,1:numCPE_tot)).*D_FWA;
-        donor_of_cpe = zeros(numCPE_tot,1);
-        for q = 1:numCPE_tot
-            donor_of_cpe(q) = find(D_FWA(:,q)==1,1);
-        end
-        eligible = false(M_sectors*numUE,1);
-        gain_ue_drop = params.gainOverNoise_lin(:,numCPE_tot+1:end);
-        for m = 1:M_sectors
-            served = find(D_cell(m,:)==1);
-            [~,ord] = sort(gain_ue_drop(m,served),'ascend');
-            n_assist = ceil(params.rep_assist_frac*numel(served));
-            eligible(served(ord(1:n_assist))) = true;
-        end
-        elig_idx = find(eligible)';
-        Vcov = zeros(numCPE_tot,numel(elig_idx)); %coverage metric matrix
-        for j = 1:numel(elig_idx)
-            kUE = elig_idx(j);
-            m_serv = find(D_cell(:,kUE)==1,1);
-            v_rep = BETA_FWA_assoc(m_serv,:)'.*params.rep_donor_gain(m_serv,:)'.*params.BETA_interUE(1:numCPE_tot,numCPE_tot+kUE);
-            v_rep(donor_of_cpe ~= m_serv) = 0;
-            Vcov(:,j) = max(v_rep,0);
-        end
-        covered = false(1,numel(elig_idx));
-        remaining = true(numCPE_tot,1);
-        greedy_order = zeros(numCPE_tot,1);
-        for pick = 1:numCPE_tot
-            newcov = sum(Vcov(:,~covered) > 0, 2);
-            newcov(~remaining) = -1;
-            cand = find(newcov == max(newcov) & remaining);
-            [~,ic] = max(sum(Vcov(cand,:),2)); %tie-break: summed metric
-            greedy_order(pick) = cand(ic);
-            covered = covered | (Vcov(cand(ic),:) > 0);
-            remaining(cand(ic)) = false;
-        end
         %% Trajectory of the cellular UEs (randomness layer 2)
         %The per-snapshot large-scale states are generated ONCE per seed,
         %before the repeater sweep, so every num_rep value sees the same
@@ -630,9 +619,66 @@ for idxBSDensity = 1:length(lambda_BS)
                 snapR_int{t_snap} = R_interue;
             end
         end
+        fadingState = rng; %COMMON RANDOM NUMBERS across the sweep axes below:
+        %the state is restored at the top of every pool-size iteration, so
+        %every (frac, num_rep, gain, SI) combination replays the identical
+        %layer-3 fading draws and sweep comparisons are paired at all three
+        %randomness layers (drops still differ across seeds/take rates)
+        for idxfrac = 1:length(rep_assist_frac_arr) %repeater-eligibility sweep
+        params.rep_assist_frac = rep_assist_frac_arr(idxfrac); %consumed by the rate
+            %function's per-sector attachment eligibility and mirrored by the
+            %pool selection below; placed after the snapshot generation so
+            %every frac value sees the identical drop and motion
+        %% Enabled-repeater pool order: GREEDY MAXIMUM COVERAGE over the
+        %DISADVANTAGED cellular UEs. Eligibility mirrors the rate
+        %computation exactly (the weakest rep_assist_frac fraction of
+        %each sector's UEs by serving-link large-scale gain); a repeater
+        %can cover an eligible UE iff its donor sector is the UE's
+        %serving sector and the donor x service link metric is positive.
+        %Each greedy pick covers the most NOT-YET-COVERED eligible UEs
+        %(ties broken by the larger summed metric), and the pool for any
+        %budget is a prefix of the greedy sequence. Greedy maximization
+        %of a coverage (submodular) function is within (1 - 1/e) of the
+        %optimal selection: G. L. Nemhauser, L. A. Wolsey, M. L. Fisher,
+        %"An analysis of approximations for maximizing submodular set
+        %functions - I", Mathematical Programming 14, 265-294 (1978),
+        %https://doi.org/10.1007/BF01588971
+        BETA_FWA_assoc = db2pow(gainOverNoisedB(:,1:numCPE_tot)).*D_FWA;
+        donor_of_cpe = zeros(numCPE_tot,1);
+        for q = 1:numCPE_tot
+            donor_of_cpe(q) = find(D_FWA(:,q)==1,1);
+        end
+        eligible = false(M_sectors*numUE,1);
+        gain_ue_drop = params.gainOverNoise_lin(:,numCPE_tot+1:end);
+        for m = 1:M_sectors
+            served = find(D_cell(m,:)==1);
+            [~,ord] = sort(gain_ue_drop(m,served),'ascend');
+            n_assist = ceil(params.rep_assist_frac*numel(served));
+            eligible(served(ord(1:n_assist))) = true;
+        end
+        elig_idx = find(eligible)';
+        Vcov = zeros(numCPE_tot,numel(elig_idx)); %coverage metric matrix
+        for j = 1:numel(elig_idx)
+            kUE = elig_idx(j);
+            m_serv = find(D_cell(:,kUE)==1,1);
+            v_rep = BETA_FWA_assoc(m_serv,:)'.*params.rep_donor_gain(m_serv,:)'.*params.BETA_interUE(1:numCPE_tot,numCPE_tot+kUE);
+            v_rep(donor_of_cpe ~= m_serv) = 0;
+            Vcov(:,j) = max(v_rep,0);
+        end
+        covered = false(1,numel(elig_idx));
+        remaining = true(numCPE_tot,1);
+        greedy_order = zeros(numCPE_tot,1);
+        for pick = 1:numCPE_tot
+            newcov = sum(Vcov(:,~covered) > 0, 2);
+            newcov(~remaining) = -1;
+            cand = find(newcov == max(newcov) & remaining);
+            [~,ic] = max(sum(Vcov(cand,:),2)); %tie-break: summed metric
+            greedy_order(pick) = cand(ic);
+            covered = covered | (Vcov(cand(ic),:) > 0);
+            remaining(cand(ic)) = false;
+        end
         for idxnumrep = 1:length(num_rep_arr)  
-            for idxrepgain = 1:length(rep_gain_arr)
-                params.repeat_gain = rep_gain_arr(idxrepgain); %G_max (dB), recorded in the CSV
+            rng(fadingState); %replay the same fading draws (see above)
                 %full-band donor input power per repeater; the rate
                 %function derives the SUBBAND-SELECTIVE effective gain
                 %from it after attachment (TR 38.867 per-resource
@@ -710,10 +756,9 @@ for idxBSDensity = 1:length(lambda_BS)
                     params.Band = 0;
                 end
                 Band_after_cell = params.Band; %band left after serving the cellular UEs
-                %gamma_I sweep for the FWA phase (single -20 dB value by
-                %default; see SI_cancel_arr for the sweep and citations)
-                for idxSI = 1:length(SI_cancel_arr)
-                    params.SI_cancel_factor = 10^(0.1*SI_cancel_arr(idxSI));
+                %fixed FWA interference-suppression factor gamma_I
+                %(citations at params.SI_cancel_dB above)
+                    params.SI_cancel_factor = 10^(0.1*params.SI_cancel_dB);
                     params.Band = Band_after_cell;
                     params.numUE = 0;
                     params.numCPE = numCPE_tot;
@@ -729,18 +774,30 @@ for idxBSDensity = 1:length(lambda_BS)
                     params.R_interue = R_interue(:,:,1:numCPE_tot,1:numCPE_tot);
                     params.R_ue = []; 
                     params.set_repeat = [];
+                    %FWA-side NCR assistance: the SAME enabled repeater pool
+                    %forwards on the FWA band for the weakest CPEs (same
+                    %eligibility fraction, donor-sector lock, and benefit
+                    %gate as the cellular side; see the rate function)
+                    params.fwa_rep_pool = greedy_order(1:min(params.num_repeater_tot,numCPE_tot));
+                    params.rep_P_in_FWA_mW = P_in_rep_mW*params.Band/Band; %constant-PSD
+                        %share of the drop-level donor input power that falls in
+                        %the FWA band (params.Band = Band_after_cell here)
                     %stationary CPEs: no mobility layer; the fading draw
                     %count matches the cellular sample count (layers 2 x 3)
                     nbrFWADraws = nbrOfSnapshots*nbrOfRealizations;
                     rate_dl = zeros(K,nbrFWADraws);
+                    fwaStateFWA = rng; %replayed per demand config below so the
+                        %hybrid needy-subband recompute sees the SAME channels
                     for n = 1:nbrFWADraws
                         [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
-                        rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
+                        %baseline: repeater-free shared full band; the needy
+                        %set of each demand config is identified from this
+                        rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);
                     end
                     mean_rate_dl_FWA = mean(rate_dl,2);
                     save_old_rate = rate_dl;
                     save_old_mean_FWA = mean_rate_dl_FWA;
-                    if idxSI == 1 && params.Band > 0
+                    if params.Band > 0
                         %raw FWA packing matrix (skipped if the cell phase
                         %consumed the whole band: all-zero rates carry no
                         %distribution information)
@@ -751,13 +808,62 @@ for idxBSDensity = 1:length(lambda_BS)
                         %per-CPE absolute minimum rates for this config;
                         %the HOME rate labels the config in filenames/CSV
                         params.fwa_demand_rates = fwa_demand_configs(idxrmin, params.cpe_zone).';
-                        params.r_min_FWA = fwa_demand_configs(idxrmin,2);
+                        params.fwa_demand_profile = fwa_demand_names{idxrmin}; %tags filenames/CSV
+                        params.r_min_FWA = fwa_demand_configs(idxrmin,2); %internal fallback only
+                                              %(computeUtility uses fwa_demand_rates)
                         K_FWA_max = 0;
                         params.Band = Band_FWA;
+                        if params.FWA_REPEAT && Band_FWA > 0
+                            %HYBRID NCR-assisted scheduling (see the flag):
+                            %needy = misses its demand on the shared full band.
+                            %The needy KEEP their f_sat share of the shared
+                            %band and ADDITIONALLY get the freed (1-f_sat)
+                            %slice as a REDUCED MU-MIMO system (channels
+                            %sliced to needy CPEs + NCR hosts, so the slice
+                            %sees no interference from the satisfied CPEs):
+                            %rate_needy = f_sat*old + slice rate
+                            rmin_all = params.fwa_demand_rates(:);
+                            needy = mean_rate_dl_FWA(1:numCPE_tot) < rmin_all;
+                            if any(needy) && any(~needy)
+                                %satisfied CPEs keep the smallest shared
+                                %subband on which ALL still meet demand
+                                f_sat = max(rmin_all(~needy)./mean_rate_dl_FWA(~needy));
+                                %reduced node set: needy CPEs + enabled NCR
+                                %hosts (hosts only forward on the slice, they
+                                %are not scheduled on it)
+                                subIdx = union(find(needy), params.fwa_rep_pool(:));
+                                needyPos = find(ismember(subIdx, find(needy)));
+                                params_sub = params;
+                                params_sub.numCPE = numel(subIdx);
+                                params_sub.D_FWA = D_FWA(:,subIdx);
+                                params_sub.D = params_sub.D_FWA;
+                                params_sub.D_cell = [];
+                                params_sub.gainOverNoise_lin = params.gainOverNoise_lin(:,subIdx);
+                                params_sub.BETA_interUE = params.BETA_interUE(subIdx,subIdx);
+                                params_sub.rep_donor_gain = params.rep_donor_gain(:,subIdx);
+                                params_sub.set_repeat = find(~ismember(subIdx, find(needy))); %hosts: forward only
+                                params_sub.fwa_rep_pool = find(ismember(subIdx, params.fwa_rep_pool));
+                                params_sub.rep_assist_frac = params.rep_assist_frac_fwa; %all needy CPEs admitted
+                                params_sub.Band = (1-f_sat)*Band_FWA; %the freed slice
+                                params_sub.rep_P_in_FWA_mW = P_in_rep_mW(subIdx)*params_sub.Band/Band;
+                                rng(fwaStateFWA); %full redraw replays the SAME channels
+                                    %as the baseline; the reduced system is a SLICE of them
+                                rate_needy = zeros(numel(subIdx),nbrFWADraws);
+                                for n = 1:nbrFWADraws
+                                    [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+                                    rate_needy(:,n) = compute_link_rates_MIMO_mmse_wi_repeater(params_sub, channel_dl, channel_est_dl, ...
+                                        channel_dl_FWA(:,subIdx,:,:), channel_est_dl_FWA(:,subIdx,:,:), ...
+                                        channel_interFWA(subIdx,subIdx,:,:), channel_interFWA_est(subIdx,subIdx,:,:));
+                                end
+                                rate_dl(needy,:) = f_sat*rate_dl(needy,:) + rate_needy(needyPos,:);
+                                rate_dl(~needy,:) = f_sat*rate_dl(~needy,:);
+                                mean_rate_dl_FWA = mean(rate_dl,2);
+                            end
+                        end
                         [cell_util, FWA_util] = computeUtility(params,mean_rate_dl_cell, mean_rate_dl_FWA);
                         K_FWA_init = sum(FWA_util>0);
                         if (params.Band > 0)
-                            while any(mean_rate_dl_FWA > params.r_max_FWA)
+                            while params.enable_fwa_cap_realloc && any(mean_rate_dl_FWA > params.r_max_FWA)
                                 CPE_idxs = find(mean_rate_dl_FWA > params.r_max_FWA);
                                 %scale the cap-exceeders down to (at least)
                                 %their OWN tiered demand, freeing the rest
@@ -769,8 +875,12 @@ for idxBSDensity = 1:length(lambda_BS)
                                 params.set_repeat = [params.set_repeat; CPE_idxs];
                                 not_set_repeat = setdiff(1:numCPE_tot,params.set_repeat);
                                 for n = 1:nbrFWADraws
-                                    [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, ~, ~] = computePhysicalChannels_sub6_MIMO(params);
-                                    rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);                                              
+                                    [channel_dl, channel_est_dl,channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est] = computePhysicalChannels_sub6_MIMO(params);
+                                    if params.FWA_REPEAT
+                                        rate_dl(:,n) = compute_link_rates_MIMO_mmse_wi_repeater(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, channel_interFWA, channel_interFWA_est);
+                                    else
+                                        rate_dl(:,n) = compute_link_rates_MIMO_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA);
+                                    end                                              
                                 end
                                 mean_rate_dl_FWA(not_set_repeat) = mean(rate_dl(not_set_repeat,:),2);
                             end
@@ -808,36 +918,27 @@ for idxBSDensity = 1:length(lambda_BS)
                         end
                 
                         deployRange = params.deployRange;
-                        numBS = size(params.locationsBS,1);
                         result_string = strcat('/results_numFWA_',num2str(numCPE_all),...
-                            'CPE_',num2str(lambda_BS(idxBSDensity)),...
-                            'lambdaBS_',num2str(lambda_SC(idxBSDensity)),...
-                            'lambdaSC_',num2str(lambda_UE_apt_arr(idxUEDensity)),...
-                            'lambdaUEres_',num2str(lambda_road),'lambdaUEroad_', ...
+                            'CPE_',num2str(activity_arr(idxActivity)),'activity_', ...
                             num2str(deployRange),'deployRange_', ...
-                            num2str(params.r_min_FWA/10^6),'min_FWA_rate', ...
-                            num2str(params.repeat_gain),'repeater_gain', ...
+                            params.fwa_demand_profile,'demand_', ...
                             num2str(params.num_repeater_tot),'num_repeater_', ...
-                            num2str(SI_cancel_arr(idxSI)),'SI_cancel_', ...
+                            num2str(params.rep_assist_frac),'assistfrac_', ...
                             aID);
                         recording_text_file_string = strcat(rateFolder,result_string,'.csv');
                         fileID = fopen(recording_text_file_string,'w');
-                        output_categories = ['lambdaBS,','lambdaSC,','numCPE,','lambdaUE,',...
-                        'lambdaUE_road,','deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','SI_cancel,','init_FWA,','max_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
+                        output_categories = ['numCPE,','activity,','deployRange,','r_min_cell,', ...
+                        'demand_profile,','num_rep,','rep_frac,','init_FWA,','max_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n'];
                         fprintf(fileID,output_categories);
-                        formatSpec = '%d,%d,%d,%d,%d,%d,%f,%f,%d,%d,%d,%d,%d,%f,%f,%f,%f\n';
-                        fprintf(fileID,formatSpec,lambda_BS(idxBSDensity),lambda_SC(idxBSDensity),numCPE_all, ...
-                        lambda_UE_apt_arr(idxUEDensity),lambda_road,deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_tot,params.repeat_gain,SI_cancel_arr(idxSI),K_FWA_init,K_FWA_max,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), FWA_se_out);
+                        formatSpec = '%d,%f,%d,%f,%s,%d,%f,%d,%d,%d,%f,%f,%f\n';
+                        fprintf(fileID,formatSpec,numCPE_all,activity_arr(idxActivity),deployRange, ...
+                        params.r_min_cell,params.fwa_demand_profile,params.num_repeater_tot,params.rep_assist_frac,K_FWA_init,K_FWA_max,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), FWA_se_out);
                         fclose(fileID);
-                        % 'lambdaUE_road,','deployRange,','r_min_cell,','r_min_FWA,','num_rep,','rep_gain,','init_FWA,','Band,' 'Band_FWA,', 'cell_se,', 'FWA_se\n']; %'max_pow_fac,'','max_cell_util,','max_FWA_util
-                        % lambda_UE_apt_arr(idxUEDensity),lambda_road,deployRange,params.r_min_cell,params.r_min_FWA,params.num_repeater_tot,params.repeat_gain,K_FWA_init,Band,Band_FWA, sum(mean_rate_dl_cell)/(Band - Band_FWA), sum_FWA_rate/(Band_FWA*K_FWA_init));
                     end
-                end %idxSI (SI-cancellation sweep)
-            end
         end
+        end %idxfrac (repeater-eligibility sweep)
     end
     end %idxnumCPE (FWA take-rate sweep)
-end
 tEnd = toc(tStart);
 fprintf('Total runtime: %f seconds\n',tEnd)
 

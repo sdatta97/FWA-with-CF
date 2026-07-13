@@ -271,6 +271,8 @@ for k = 1:K-K_FWA
         %(TR 38.867): the gNB keeps the better of ON/OFF per UE, since an
         %AF repeater substitutes a rank-1, interference-inheriting path
         %for the direct MIMO link and only pays off in coverage holes.
+        %params.ncr_benefit_gate = 0 disables the gate (ablation): every
+        %attached UE is forced onto the repeater composite.
         %Cross-UE coupling through the interferers' beam matrices is
         %neglected in the OFF evaluation (measured < 1% of a UE's rate).
         rate_on = 0;
@@ -315,7 +317,8 @@ for k = 1:K-K_FWA
             HI_on(n) = HI_on(n) + (1-Kr*Kt)*mci_base;
             rate_on = rate_on + share*TAU_FAC*log2(1+DS_on(n)/(MSI_on(n)+MCI_on(n)+HI_on(n)+noise_dl(k,n)));
         end
-        if rate_on > rate_off
+        gate_on = ~isfield(params,'ncr_benefit_gate') || params.ncr_benefit_gate;
+        if rate_on > rate_off || ~gate_on
             rate_dl(k) = rate_on;
             DS_dl(k,:) = DS_on; MSI_dl(k,:) = MSI_on;
             MCI_dl(k,:) = MCI_on; HI_dl(k,:) = HI_on;
