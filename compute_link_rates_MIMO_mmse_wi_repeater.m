@@ -4,9 +4,9 @@ function rate_dl = compute_link_rates_MIMO_mmse_wi_repeater(params,channel_dl, c
 %repeater-free variant lives in compute_link_rates_MIMO_mmse.m).
 %When params.fwa_rep_pool is
 %nonempty and the inter-CPE channels are supplied, the CPE-hosted NCRs
-%ALSO assist the FWA band: the weakest params.rep_assist_frac fraction
-%of each sector's CPEs may attach to the SAME enabled repeater pool as
-%the cellular side, under the same donor-sector lock, ZF donor
+%ALSO assist the FWA band: every schedulable CPE may attach to the SAME
+%enabled repeater pool as the cellular side, under the same donor-sector
+%lock, ZF donor
 %combining, output-power cap, and per-victim benefit gate
 %(params.ncr_benefit_gate) as compute_link_rates_OFDM_wi_repeater.m.
 %Differences forced by the MU-MIMO FWA phase (all CPEs are spatially
@@ -46,19 +46,12 @@ if nargin >= 7 && isfield(params,'fwa_rep_pool') && ~isempty(params.fwa_rep_pool
     for q = 1:K_FWA
         donor_of(q) = find(D_FWA_a(:,q)==1,1);
     end
-    %eligibility mirrors the cellular side: the weakest rep_assist_frac
-    %fraction of each sector's CPEs by serving-link large-scale gain
+    %eligibility mirrors the cellular side: every CPE scheduled on this
+    %subband may attach (the benefit gate performs the selection)
     beta_cpe = params.gainOverNoise_lin(:,1:K_FWA);
-    elig = false(K_FWA,1);
-    for m = 1:M_sectors
-        served = find(donor_of==m)';
-        served = served(~ismember(served, params.set_repeat)); %not scheduled
-            %on this subband (hybrid split) -> not eligible for assistance
-        if isempty(served), continue, end
-        [~,ord] = sort(beta_cpe(m,served),'ascend');
-        n_assist = ceil(params.rep_assist_frac*numel(served));
-        elig(served(ord(1:n_assist))) = true;
-    end
+    elig = true(K_FWA,1);
+    elig(params.set_repeat) = false; %not scheduled on this subband
+        %(hybrid split) -> not eligible for assistance
     %attachment: donor-sector-locked, at most num_repeater_per_cpe hosts,
     %and never the NCR mounted on the CPE itself
     BETA_interCPE = params.BETA_interUE(1:K_FWA,1:K_FWA);

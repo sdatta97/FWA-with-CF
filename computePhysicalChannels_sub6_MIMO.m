@@ -125,7 +125,14 @@ if params.IMPERFECT_CSI
         end
     end
     %repeater-to-user links: sounded through the network-controlled
-    %repeater with the same normalized pilot power
+    %repeater with the same normalized pilot power. DESIGN ASSUMPTION
+    %(beyond Rel-18): the SMART NCR measures its service channel locally
+    %at the fading rate, so these estimates carry no staleness even
+    %toward fast UEs - unlike the gNB links above, which age with the
+    %per-class CSI loops. This freshness is what lets the repeater path
+    %bypass the mobility penalty of the direct link (a deliberate,
+    %standard-defying capability of the modeled repeater; Rel-18 side
+    %control alone is semi-static, TR 38.867)
     for q = 1:K_FWA
         for k = 1:K
             if (q~=k)

@@ -57,18 +57,13 @@ for m = 1:M_sectors
 end
 sectorLoad = sum(D_cell,2);
 K_rep = params.num_repeater_per_cpe;
-%Repeater assistance is restricted to the WEAKEST cellular UEs of each
-%sector (the cell-edge users): the rep_assist_frac fraction with the
-%lowest serving-link large-scale gain. Strong UEs keep the pure direct
-%path, so repeater-injected interference cannot degrade the healthy
-%majority (and starve the cell band adaptation at its low percentile).
+%EVERY served cellular UE may attach to a repeater: the per-UE benefit
+%gate below keeps only genuinely helped UEs on the repeater path, so
+%universal eligibility is safe by construction (strong, interference-
+%limited UEs fail the gate and keep the pure direct path)
 assist = false(K-K_FWA,1);
-gain_ue = params.gainOverNoise_lin(:,K_FWA+1:end);
 for m = 1:M_sectors
-    served = U{m};
-    [~,ord] = sort(gain_ue(m,served),'ascend');
-    n_assist = ceil(params.rep_assist_frac*numel(served));
-    assist(served(ord(1:n_assist))) = true;
+    assist(U{m}) = true;
 end
 %Donor sector of each CPE/repeater: the sector it is served by, which is
 %where its donor panel is locked. An NCR forwards its donor gNB's signal,
@@ -315,7 +310,7 @@ for k = 1:K-K_FWA
             rate_on = rate_on + share*TAU_FAC(k)*log2(1+DS_on(n)/(MSI_on(n)+MCI_on(n)+HI_on(n)+noise_dl(k,n)));
         end
         gate_on = ~isfield(params,'ncr_benefit_gate') || params.ncr_benefit_gate;
-        if rate_on > rate_off || ~gate_on
+        if rate_on > rate_off || ~ gate_on
             rate_dl(k) = rate_on;
             DS_dl(k,:) = DS_on; MSI_dl(k,:) = MSI_on;
             MCI_dl(k,:) = MCI_on; HI_dl(k,:) = HI_on;

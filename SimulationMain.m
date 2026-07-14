@@ -256,16 +256,15 @@ params.pedestrian_ratio = 0.2; %fraction of each zone's GROSS actives outdoors o
 params.indoor_offload = 0.8;   %fraction of indoor actives on home/venue broadband
                                %instead of cellular (Cisco VNI offload + US home
                                %internet penetration, see above)
-params.loss_pc_cell = 10/100; %enforce r_min_cell at the 10th-percentile cell
-       %UE: the FCC Broadband Data Collection mobile-coverage rule requires
-       %maps at >= 90% cell-edge coverage probability (and >= 50% cell
-       %loading) at the reported threshold - 35/3 Mbps for 5G-NR - i.e. the
-       %SAME FCC source as r_min_cell itself
-       %(https://help.bdc.fcc.gov/hc/en-us/articles/6047425308187;
-       %https://www.fcc.gov/sites/default/files/fcc-cle-presentation-03112021.pdf).
-       %Applied here as a POPULATION percentile over the whole cell (stricter
-       %than an edge-contour probability). The previous 5% followed the
-       %ITU-R M.2410 / TR 38.913 5th-percentile user-SE KPI convention
+params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
+       %(ITU-R M.2410 / TR 38.913 5th-percentile user-SE KPI convention) -
+       %the band-setting UE then sits at the noise-limited edge where NCR
+       %assistance can act. The FCC BDC mobile-coverage rule would support
+       %10% (>= 90% cell-edge coverage probability at 35/3 Mbps, >= 50%
+       %loading: https://help.bdc.fcc.gov/hc/en-us/articles/6047425308187),
+       %but at the 10th percentile the setter is interference-limited and
+       %decoupled from the repeater mechanism; recorded in the loss_pc
+       %naming-registry entry either way
 %FWA multi-user/inter-cell interference suppression factor gamma_I (dB):
 %residual interference power after beam nulling by the stationary,
 %large-array FWA CPEs. Justified values: commercial ngFWA radios cancel
@@ -278,7 +277,8 @@ params.loss_pc_cell = 10/100; %enforce r_min_cell at the 10th-percentile cell
 %value is conservative against both (a -20:5:0 sweep produced the legacy
 %suppression-factor SE-comparison figure; the factor is FIXED now)
 params.SI_cancel_dB = -20;
-params.HW_IMPAIRMENTS = 1;  % 1 = hardware impairments on, 0 = ideal hardware
+params.HW_IMPAIRMENTS = 0;  % 1 = hardware impairments on, 0 = ideal hardware
+                            %(recorded via the HWI naming-registry entry)
 %EVM-based impairment factors: an error vector magnitude of e turns a
 %fraction e^2 of the signal power into distortion, so K = 1 - e^2.
 %3GPP minimum signal quality: BS transmit EVM 3.5% for 256QAM / 8% for
@@ -347,10 +347,11 @@ params.ncr_rank = 1; %NCR forwarded spatial layers: 1 = Rel-18 single-chain
                      %https://arxiv.org/pdf/2403.09601); params.N_UE_cell =
                      %beyond-Rel-18 MIMO-repeater what-if (details in
                      %compute_link_rates_OFDM_wi_repeater.m)
-num_rep_arr = 1:1:6; %total enabled repeaters; greedy max-coverage attachment
+num_rep_arr = [6 12 18]; %total enabled repeaters; greedy max-coverage attachment
 params.ncr_benefit_gate = 1; %per-UE NCR ON/OFF side control (TR 38.867); =0 only for ablation
                      %is per donor sector, saturating near one per sector (6)
-params.FWA_REPEAT = 1; %1 = HYBRID FWA scheduling with NCR assistance: CPEs
+params.FWA_REPEAT = 0; %DISABLED for now (avoids confounding the cellular-side
+                       %NCR study). 1 = HYBRID FWA scheduling with NCR assistance: CPEs
                        %missing their demand on the shared band ("needy") get
                        %the freed remainder of the satisfied CPEs' subband
                        %(shrunk so every satisfied CPE still meets demand) as
@@ -358,20 +359,10 @@ params.FWA_REPEAT = 1; %1 = HYBRID FWA scheduling with NCR assistance: CPEs
                        %share; scheme and rationale documented in
                        %compute_link_rates_MIMO_mmse_wi_repeater.m and at the
                        %recompute in the demand loop. 0 = repeater-free
-params.rep_assist_frac_fwa = 1; %FWA-side NCR admission: ALL needy CPEs are
-                       %admitted, DECOUPLED from the swept cellular
-                       %rep_assist_frac (which only shapes cellular
-                       %eligibility and the greedy pool)
-params.num_repeater_per_cpe = 2; %NCRs attached per assisted user: TWO independent
-                                 %rank-1 amplify-and-forward branches make the
-                                 %composite channel rank-2, restoring the UE's
-                                 %second spatial stream that a single Rel-18 NCR
-                                 %collapses
-rep_assist_frac_arr = 0:0.2:1; %swept fraction of each sector's WEAKEST cellular
-                                 %UEs (cell edge, by serving-link large-scale gain)
-                                 %eligible for repeater assistance; the rest keep the
-                                 %pure direct path. 0 disables NCR assistance entirely
-                                 %(no attachments), giving the no-repeater baseline
+params.num_repeater_per_cpe = 1; %NCRs attached per assisted user (single
+                                 %rank-1 amplify-and-forward branch; 2 restores
+                                 %the UE's second spatial stream via two
+                                 %independent branches)
 %Three layers of randomness, averaged per SLURM array task:
 %  (1) the seed aID fixes the DROP: gNB/CPE/UE locations and the initial
 %      large-scale state;
@@ -424,11 +415,14 @@ fwa_demand_configs = 1e6*[100    50    100    100;   %LOW demand profile
 %Register any new sweep axis in BOTH lists (and in currVals at the
 %writer) - the check_naming.m scratchpad script verifies consistency
 %without running the simulation.
-sweepRegNames = {'take_rate','activity','rep_frac','num_rep','demand_profile', ...
-    'rep_gain','SI_cancel','r_min_cell_Mbps','loss_pc','ISD_m','Band_MHz'};
-sweepRegVals = {take_rate_arr, activity_arr, rep_assist_frac_arr, num_rep_arr, ...
+sweepRegNames = {'take_rate','activity','num_rep','demand_profile', ...
+    'rep_gain','SI_cancel','r_min_cell_Mbps','loss_pc','ISD_m','Band_MHz','HWI', ...
+    'FWArep','rank','Krep','gate','contam'};
+sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     fwa_demand_names, params.repeat_gain, params.SI_cancel_dB, ...
-    params.r_min_cell/1e6, params.loss_pc_cell, params.ISD, Band/1e6};
+    params.r_min_cell/1e6, params.loss_pc_cell, params.ISD, Band/1e6, params.HW_IMPAIRMENTS, ...
+    params.FWA_REPEAT, params.ncr_rank, ...
+    params.num_repeater_per_cpe, params.ncr_benefit_gate, params.fwa_pilot_contam};
 naming = sweepNaming(sweepRegNames, sweepRegVals, aID);
 %a rerun of the same seed starts its table fresh (rows accumulate across
 %the sweep loops within one run, never across runs)
@@ -509,7 +503,6 @@ end
         A_apt = pi*((params.aptRadius/1000)^2 - (params.min_dist_2D/1000)^2);  %km^2 per site
         A_home = pi*((params.homeRadius/1000)^2 - (params.aptRadius/1000)^2);  %km^2 per site
         A_mall = pi*(params.mallRadius/1000)^2;                                %km^2, shared
-        A_roads = pi*((params.deployRange/1000)^2 - (params.aptRadius/1000)^2);%km^2 per site
         g_apt = ceil(lambda_UE_apt_base*act_scale*A_apt);      %gross actives per site
         g_home = ceil(lambda_UE_home_base*act_scale*A_home);   %gross actives per site
         g_mall = ceil(lambda_UE_mall_base*act_scale*A_mall);   %gross actives, shared zone
@@ -722,17 +715,12 @@ end
         %every (frac, num_rep, gain, SI) combination replays the identical
         %layer-3 fading draws and sweep comparisons are paired at all three
         %randomness layers (drops still differ across seeds/take rates)
-        for idxfrac = 1:length(rep_assist_frac_arr) %repeater-eligibility sweep
-        params.rep_assist_frac = rep_assist_frac_arr(idxfrac); %consumed by the rate
-            %function's per-sector attachment eligibility and mirrored by the
-            %pool selection below; placed after the snapshot generation so
-            %every frac value sees the identical drop and motion
         %% Enabled-repeater pool order: GREEDY MAXIMUM COVERAGE over the
-        %DISADVANTAGED cellular UEs. Eligibility mirrors the rate
-        %computation exactly (the weakest rep_assist_frac fraction of
-        %each sector's UEs by serving-link large-scale gain); a repeater
-        %can cover an eligible UE iff its donor sector is the UE's
-        %serving sector and the donor x service link metric is positive.
+        %cellular UEs. EVERY served UE is eligible for assistance (the
+        %per-UE benefit gate in the rate function performs the actual
+        %selection); a repeater can cover a UE iff its donor sector is
+        %the UE's serving sector and the donor x service link metric is
+        %positive.
         %Each greedy pick covers the most NOT-YET-COVERED eligible UEs
         %(ties broken by the larger summed metric), and the pool for any
         %budget is a prefix of the greedy sequence. Greedy maximization
@@ -746,15 +734,7 @@ end
         for q = 1:numCPE_tot
             donor_of_cpe(q) = find(D_FWA(:,q)==1,1);
         end
-        eligible = false(M_sectors*numUE,1);
-        gain_ue_drop = params.gainOverNoise_lin(:,numCPE_tot+1:end);
-        for m = 1:M_sectors
-            served = find(D_cell(m,:)==1);
-            [~,ord] = sort(gain_ue_drop(m,served),'ascend');
-            n_assist = ceil(params.rep_assist_frac*numel(served));
-            eligible(served(ord(1:n_assist))) = true;
-        end
-        elig_idx = find(eligible)';
+        elig_idx = find(sum(D_cell,1) > 0); %every served UE
         Vcov = zeros(numCPE_tot,numel(elig_idx)); %coverage metric matrix
         for j = 1:numel(elig_idx)
             kUE = elig_idx(j);
@@ -941,7 +921,6 @@ end
                                 params_sub.rep_donor_gain = params.rep_donor_gain(:,subIdx);
                                 params_sub.set_repeat = find(~ismember(subIdx, find(needy))); %hosts: forward only
                                 params_sub.fwa_rep_pool = find(ismember(subIdx, params.fwa_rep_pool));
-                                params_sub.rep_assist_frac = params.rep_assist_frac_fwa; %all needy CPEs admitted
                                 params_sub.Band = (1-f_sat)*Band_FWA; %the freed slice
                                 params_sub.rep_P_in_FWA_mW = P_in_rep_mW(subIdx)*params_sub.Band/Band;
                                 rng(fwaStateFWA); %full redraw replays the SAME channels
@@ -1014,10 +993,13 @@ end
                         resultFile = fullfile(rateFolder, naming.file);
                         writeHeader = ~isfile(resultFile);
                         currVals = {take_rate_arr(idxnumCPE), activity_arr(idxActivity), ...
-                            params.rep_assist_frac, params.num_repeater_tot, ...
+                            params.num_repeater_tot, ...
                             params.fwa_demand_profile, params.repeat_gain, ...
                             params.SI_cancel_dB, params.r_min_cell/1e6, ...
-                            params.loss_pc_cell, params.ISD, Band/1e6};
+                            params.loss_pc_cell, params.ISD, Band/1e6, params.HW_IMPAIRMENTS, ...
+                            params.FWA_REPEAT, ...
+                            params.ncr_rank, params.num_repeater_per_cpe, ...
+                            params.ncr_benefit_gate, params.fwa_pilot_contam};
                         fileID = fopen(resultFile,'a');
                         if writeHeader
                             fprintf(fileID, naming.header);
@@ -1028,7 +1010,6 @@ end
                         fclose(fileID);
                     end
         end
-        end %idxfrac (repeater-eligibility sweep)
     end
     end %idxnumCPE (FWA take-rate sweep)
 tEnd = toc(tStart);

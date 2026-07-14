@@ -6,12 +6,27 @@ clear;
 %template: single-column width (3.5 in), 8 pt Times, saved as
 %.eps/.png/.fig in plots/. Run combineData.m first.
 repoRoot = fullfile(fileparts(mfilename('fullpath')),'..');
-%newest sweepNaming.m result folder (production and truncated runs land
-%in different FWA_const_* folders by construction)
+%newest sweepNaming.m result folder WHOSE SUMMARY CARRIES THE PLOT AXES
+%(truncated runs collapse num_rep/demand_profile into constants and land
+%in different FWA_const_* folders; those cannot feed these figures)
 cdirs = dir(fullfile(repoRoot,'resultData','FWA_const_*'));
 cdirs = cdirs([cdirs.isdir]);
-[~,newest] = max([cdirs.datenum]);
-sweepDir = fullfile(cdirs(newest).folder, cdirs(newest).name);
+[~,ord] = sort([cdirs.datenum],'descend');
+sweepDir = '';
+for ci = ord
+    cand = fullfile(cdirs(ci).folder, cdirs(ci).name);
+    sfile = fullfile(cand,'summary.csv');
+    if isfile(sfile)
+        vars = readtable(sfile).Properties.VariableNames;
+        if all(ismember({'num_rep','demand_profile'}, vars))
+            sweepDir = cand;
+            break
+        end
+    end
+end
+if isempty(sweepDir)
+    error('no FWA_const_* folder with num_rep and demand_profile columns (run combineData on a production sweep first)');
+end
 packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
 plotDir = fullfile(repoRoot,'plots');
 
