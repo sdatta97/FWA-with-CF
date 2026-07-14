@@ -3,7 +3,10 @@ M_sectors = params.numGNB;
 K_FWA = params.numCPE;
 K = M_sectors*params.numUE + params.numCPE;
 BW = params.Band; %frequency reuse 1: every sector uses the full band
-TAU_FAC = params.preLogFactor;
+TAU_FAC = params.preLogFactor; %scalar, or per-UE vector (per-class CSI overheads)
+if isscalar(TAU_FAC)
+    TAU_FAC = TAU_FAC*ones(K - params.numCPE,1);
+end
 N_BS = size(channel_dl,3);
 N_UE = size(channel_dl,4);
 N_CPE_FWA = size(channel_dl_FWA,4);
@@ -103,26 +106,20 @@ end
 % (ii) non-attached UEs' subbands are simply not forwarded, so only
 %     attached UEs carry repeater path components - which is exactly
 %     how H_rep is structured below.
-%Legacy full-band forwarding is used when the caller supplies
-%params.repeat_gain_amp instead of params.rep_P_in_mW.
-if isfield(params,'rep_P_in_mW')
-    n_att = zeros(K_FWA,1); %attached (repeater, UE) pairs per repeater
-    for k = 1:K-K_FWA
-        for kk = 1:numel(Rep{k})
-            n_att(Rep{k}(kk)) = n_att(Rep{k}(kk)) + 1;
-        end
+n_att = zeros(K_FWA,1); %attached (repeater, UE) pairs per repeater
+for k = 1:K-K_FWA
+    for kk = 1:numel(Rep{k})
+        n_att(Rep{k}(kk)) = n_att(Rep{k}(kk)) + 1;
     end
-    G_max_lin = 10^(0.1*params.repeat_gain);
-    P_max_mW = 10^(0.1*params.rep_max_pow_dBm);
-    rep_gain_amp = zeros(K_FWA,1);
-    for q = 1:K_FWA
-        if n_att(q) > 0
-            f_sub = n_att(q)/sectorLoad(donor_of(q)); %forwarded band fraction
-            rep_gain_amp(q) = sqrt(min(G_max_lin, P_max_mW/(params.rep_P_in_mW(q)*f_sub)));
-        end
+end
+G_max_lin = 10^(0.1*params.repeat_gain);
+P_max_mW = 10^(0.1*params.rep_max_pow_dBm);
+rep_gain_amp = zeros(K_FWA,1);
+for q = 1:K_FWA
+    if n_att(q) > 0
+        f_sub = n_att(q)/sectorLoad(donor_of(q)); %forwarded band fraction
+        rep_gain_amp(q) = sqrt(min(G_max_lin, P_max_mW/(params.rep_P_in_mW(q)*f_sub)));
     end
-else
-    rep_gain_amp = params.repeat_gain_amp;
 end
 %Repeater-path component of every sector-to-UE channel, computed once.
 %The NCR applies rank-1 amplify-and-forward BEAMFORMING (TR 38.867 side
@@ -263,7 +260,7 @@ for k = 1:K-K_FWA
         HI_off = HI_off + (1-Kr*Kt)*mci_base;
         DS_dl(k,n) = DS_off; MSI_dl(k,n) = MSI_off;
         MCI_dl(k,n) = MCI_off; HI_dl(k,n) = HI_off;
-        rate_off = rate_off + share*TAU_FAC*log2(1+DS_off/(MSI_off+MCI_off+HI_off+noise_dl(k,n)));
+        rate_off = rate_off + share*TAU_FAC(k)*log2(1+DS_off/(MSI_off+MCI_off+HI_off+noise_dl(k,n)));
     end
     rate_dl(k) = rate_off;
     if ~isempty(Rep{k})
@@ -315,7 +312,7 @@ for k = 1:K-K_FWA
             end
             MCI_on(n) = Kr*Kt*mci_base;
             HI_on(n) = HI_on(n) + (1-Kr*Kt)*mci_base;
-            rate_on = rate_on + share*TAU_FAC*log2(1+DS_on(n)/(MSI_on(n)+MCI_on(n)+HI_on(n)+noise_dl(k,n)));
+            rate_on = rate_on + share*TAU_FAC(k)*log2(1+DS_on(n)/(MSI_on(n)+MCI_on(n)+HI_on(n)+noise_dl(k,n)));
         end
         gate_on = ~isfield(params,'ncr_benefit_gate') || params.ncr_benefit_gate;
         if rate_on > rate_off || ~gate_on
@@ -329,7 +326,8 @@ end
 
 function W = beamMatrix(H_comp,m,U,N_BS,N_UE)
 %Columns are the unit-norm matched-filter beams sector m applies towards
-%its scheduled UEs (one per UE antenna stream), from the composite channels
+%its scheduled UEs (one per UE antenna stream), from the composite
+%estimated channels
 if isempty(U)
     W = zeros(N_BS,0);
     return
@@ -338,8 +336,8 @@ W = zeros(N_BS,numel(U)*N_UE);
 c = 0;
 for q = U(:)'
     for nn = 1:N_UE
-        h = reshape(H_comp(m,q,:,nn),N_BS,1);
         c = c + 1;
+        h = reshape(H_comp(m,q,:,nn),N_BS,1);
         W(:,c) = h./norm(h);
     end
 end

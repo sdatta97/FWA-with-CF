@@ -3,7 +3,10 @@ M_sectors = params.numGNB;
 K_FWA = params.numCPE;
 K = M_sectors*params.numUE + params.numCPE;
 BW = params.Band; %frequency reuse 1: every sector uses the full band
-TAU_FAC = params.preLogFactor;
+TAU_FAC = params.preLogFactor; %scalar, or per-UE vector (per-class CSI overheads)
+if isscalar(TAU_FAC)
+    TAU_FAC = TAU_FAC*ones(K - params.numCPE,1);
+end
 N_BS = size(channel_dl,3);
 N_UE = size(channel_dl,4);
 p_d = params.rho_tot; %total sector power. Constant-PSD convention: channels
@@ -28,14 +31,14 @@ for m = 1:M_sectors
 end
 sectorLoad = sum(D,2);
 %Beamforming vectors each sector applies towards its own scheduled UEs
-%(matched filter for BEAM=1, fixed broadside beam for BEAM=0), built on
+%(matched filter per scheduled UE), built on
 %the ESTIMATED channels (imperfect CSI when params.IMPERFECT_CSI is set);
 %physical reception uses the true channels. The same matrices provide the
 %victim's own DS/MSI beams and the beamformed inter-sector interference,
 %averaged over the interferer's scheduled set (round-robin OFDMA)
 W = cell(M_sectors,1);
 for m = 1:M_sectors
-    W{m} = beamMatrix(channel_est_dl,m,U{m},N_BS,N_UE,params.BEAM);
+    W{m} = beamMatrix(channel_est_dl,m,U{m},N_BS,N_UE);
 end
 
 %% Computing rates
@@ -76,34 +79,32 @@ for k = 1:K-K_FWA
         end
         MCI_dl(k,n) = Kr*Kt*mci_base;
         HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*mci_base;
-        rate_dl(k) = rate_dl(k) + share*TAU_FAC*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
+        rate_dl(k) = rate_dl(k) + share*TAU_FAC(k)*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
     end
 end
 end
 
-function W = beamMatrix(channel_dl,m,U,N_BS,N_UE,BEAM)
-%Columns are the unit-norm beams sector m applies towards its scheduled
-%UEs (one per UE antenna stream)
+function W = beamMatrix(channel_dl,m,U,N_BS,N_UE)
+%Columns are the unit-norm matched-filter beams sector m applies towards
+%its scheduled UEs (one per UE antenna stream)
 if isempty(U)
     W = zeros(N_BS,0);
-elseif BEAM
-    W = zeros(N_BS,numel(U)*N_UE);
-    c = 0;
-    for q = U(:)'
-        for nn = 1:N_UE
-            h = reshape(channel_dl(m,q,:,nn),N_BS,1);
-            c = c + 1;
-            W(:,c) = h./norm(h);
-        end
+    return
+end
+W = zeros(N_BS,numel(U)*N_UE);
+c = 0;
+for q = U(:)'
+    for nn = 1:N_UE
+        c = c + 1;
+        h = reshape(channel_dl(m,q,:,nn),N_BS,1);
+        W(:,c) = h./norm(h);
     end
-else
-    W = ones(N_BS,1)./sqrt(N_BS); %fixed beam, identical for every UE
 end
 end
 
 function w = getBeam(W,U,q,nn,N_UE)
 %Beam a sector applies towards antenna nn of its scheduled UE q: a column
-%of its beam matrix (the single shared column under the fixed-beam model)
+%of its beam matrix
 if size(W,2) == 1
     w = W(:,1);
 else

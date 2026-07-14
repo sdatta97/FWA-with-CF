@@ -6,7 +6,12 @@ clear;
 %template: single-column width (3.5 in), 8 pt Times, saved as
 %.eps/.png/.fig in plots/. Run combineData.m first.
 repoRoot = fullfile(fileparts(mfilename('fullpath')),'..');
-sweepDir = fullfile(repoRoot,'resultData','FWA_multi_cell_repeater_fix_comp_alloc');
+%newest sweepNaming.m result folder (production and truncated runs land
+%in different FWA_const_* folders by construction)
+cdirs = dir(fullfile(repoRoot,'resultData','FWA_const_*'));
+cdirs = cdirs([cdirs.isdir]);
+[~,newest] = max([cdirs.datenum]);
+sweepDir = fullfile(cdirs(newest).folder, cdirs(newest).name);
 packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
 plotDir = fullfile(repoRoot,'plots');
 

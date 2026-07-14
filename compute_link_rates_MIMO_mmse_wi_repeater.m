@@ -33,9 +33,8 @@ if params.HW_IMPAIRMENTS
 else
     Kt = 1; Kr_FWA = 1; Kr_cell = 1; K_rep_hw = 1;
 end
-%noise draws shared by the NCR-OFF/ON evaluations; nothing above them
-%consumes randomness, so the stream position matches the previous
-%implementation exactly
+%noise draws shared by the NCR-OFF/ON evaluations (drawn before any
+%assistance computation)
 noise_FWA = abs(sqrt(0.5)*(randn(K_FWA,N_CPE_FWA) + 1j*randn(K_FWA,N_CPE_FWA))).^2;
 noise_Cell = abs(sqrt(0.5)*(randn(K-K_FWA,N_UE) + 1j*randn(K-K_FWA,N_UE))).^2;
 %% FWA-side NCR assistance: composite serving channels for assisted CPEs
@@ -140,7 +139,7 @@ if any(assisted)
         end
     end
 end
-%NCR-OFF rates (the previous implementation, verbatim, in rates_core_mmse)
+%NCR-OFF rates
 rate_dl = rates_core_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, noise_FWA, noise_Cell, Kt, Kr_FWA, Kr_cell);
 if any(assisted)
     %NCR-ON rates with the assisted CPEs' composite channels; the per-CPE
@@ -157,8 +156,8 @@ end
 end
 
 function rate_dl = rates_core_mmse(params, channel_dl, channel_est_dl, channel_dl_FWA, channel_est_dl_FWA, noise_FWA, noise_Cell, Kt, Kr_FWA, Kr_cell)
-%the pre-assistance compute_link_rates_MIMO_mmse computation, verbatim,
-%with the channels and shared noise draws passed in
+%repeater-free MU-MIMO MMSE rates (the compute_link_rates_MIMO_mmse
+%model) with the channels and shared noise draws passed in
 M_sectors = params.numGNB;
 K_FWA = params.numCPE;
 K = M_sectors*params.numUE + params.numCPE;

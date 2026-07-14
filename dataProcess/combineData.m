@@ -3,9 +3,10 @@ clear;
 %combineData: DATA GATHERING ONLY (plots live in plotData.m). Aggregates
 %the per-seed (SLURM array) outputs of SimulationMain.m into stored
 %files:
-%  1) sweep CSVs (one row per parameter combination per seed) in
-%     resultData/FWA_multi_cell_repeater_fix_comp_alloc are combined into
-%     summary.csv/.txt with mean/std/median across seeds;
+%  1) per-seed sweep tables (one row per sweep-grid point) in the
+%     resultData/FWA_const_* folders (sweepNaming.m convention) are
+%     combined into per-folder summary.csv/.txt with mean/std/median
+%     across seeds;
 %  2) raw packing matrices (per-user x per-(snapshot x realization)
 %     rates) in resultData/FWA_packing_analysis are reduced to the
 %     safe-load-fraction curves f(eps) = q_eps(rate)/mean(rate) and
@@ -13,40 +14,41 @@ clear;
 %CSV-combining pattern adapted from
 %https://in.mathworks.com/matlabcentral/answers/538119
 repoRoot = fullfile(fileparts(mfilename('fullpath')),'..');
-sweepDir = fullfile(repoRoot,'resultData','FWA_multi_cell_repeater_fix_comp_alloc');
 packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
 
-%% 1) Combine the sweep CSVs across seeds and summarize
-dinfo = dir(fullfile(sweepDir,'*.csv'));
-dinfo = dinfo(~startsWith({dinfo.name},'summary'));
-%only the current output schema (older runs used different columns and
-%cannot be concatenated); the activity tag marks the schema that carries
-%the activity, demand_profile and rep_frac columns
-dinfo = dinfo(contains({dinfo.name},'activity_'));
-if ~isempty(dinfo)
-    filenames = fullfile({dinfo.folder},{dinfo.name});
-    tables = cell(numel(filenames),1);
-    for f = 1:numel(filenames)
+%% 1) Combine the sweep CSVs across seeds and summarize.
+%Result folders follow the sweepNaming.m convention: each
+%resultData/FWA_const_<constant names>/ folder holds one schema (the
+%swept parameters are its table columns), with one file per seed named
+%by the constant values. Each folder is summarized independently; group
+%keys are ALL non-outcome columns, so the aggregation adapts to
+%whatever axes were swept.
+outcomeVars = {'numCPE','init_FWA','max_FWA','Band_FWA','cell_se','FWA_se'};
+constDirs = dir(fullfile(repoRoot,'resultData','FWA_const_*'));
+constDirs = constDirs([constDirs.isdir]);
+for cd_i = 1:numel(constDirs)
+    thisDir = fullfile(constDirs(cd_i).folder, constDirs(cd_i).name);
+    dinfo = dir(fullfile(thisDir,'results_*.csv'));
+    if isempty(dinfo), continue, end
+    tables = cell(numel(dinfo),1);
+    for f = 1:numel(dinfo)
         try
-            tables{f} = readtable(filenames{f});
+            tables{f} = readtable(fullfile(thisDir,dinfo(f).name));
         catch Exception
             disp(Exception);
         end
     end
     combinedTable = vertcat(tables{:});
-    %group by the configuration columns; summarize the outcome columns
-    groupVars = {'numCPE','activity','deployRange','r_min_cell', ...
-        'demand_profile','num_rep','rep_frac','Band'};
-    outcomeVars = {'init_FWA','max_FWA','Band_FWA','cell_se','FWA_se'};
-    groupVars = intersect(groupVars, combinedTable.Properties.VariableNames,'stable');
-    outcomeVars = intersect(outcomeVars, combinedTable.Properties.VariableNames,'stable');
-    summaryTable = groupsummary(combinedTable,groupVars,{'mean','std','median'},outcomeVars);
-    writetable(summaryTable, fullfile(sweepDir,'summary.csv'));
-    writetable(summaryTable, fullfile(sweepDir,'summary.txt'));
-    fprintf('sweep summary: %d rows from %d files -> %s\n', ...
-        height(summaryTable), numel(filenames), fullfile(sweepDir,'summary.csv'));
-else
-    fprintf('no sweep CSVs found in %s\n', sweepDir);
+    groupVars = setdiff(combinedTable.Properties.VariableNames, outcomeVars, 'stable');
+    ovars = intersect(outcomeVars, combinedTable.Properties.VariableNames, 'stable');
+    summaryTable = groupsummary(combinedTable, groupVars, {'mean','std','median'}, ovars);
+    writetable(summaryTable, fullfile(thisDir,'summary.csv'));
+    writetable(summaryTable, fullfile(thisDir,'summary.txt'));
+    fprintf('sweep summary [%s]: %d rows from %d seed files -> summary.csv\n', ...
+        constDirs(cd_i).name, height(summaryTable), numel(dinfo));
+end
+if isempty(constDirs)
+    fprintf('no FWA_const_* result folders found under %s\n', fullfile(repoRoot,'resultData'));
 end
 
 %% 2) Reduce the packing matrices to safe-load-fraction curves

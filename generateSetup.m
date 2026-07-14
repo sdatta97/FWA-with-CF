@@ -1,4 +1,4 @@
-function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,pilotIndex,D_FWA,D_cell,APpositions,UEpositions,distances,distancesUEs,isIndoor,hUT,O2IdB,repDonorGaindB,mobState] = generateSetup(params,seed,mobState)
+function [gainOverNoisedB,gainOverNoisedB_ue,R_gNB,R_cpe,R_interue,R_ue,D_FWA,D_cell,repDonorGaindB,mobState] = generateSetup(params,seed,mobState)
 %Generates one realization of the suburban (SMa) simulation setup:
 %sectored BS antenna gains (TR 38.901 Table 7.3-1), SMa pathloss / LOS /
 %O2I penetration (TR 38.901 Clause 7.4), correlated shadow fading,
@@ -148,7 +148,6 @@ R_interue = zeros(N_UE_FWA,N_UE_FWA,K_FWA,K);
 R_ue = zeros(N_UE_cell,N_UE_cell,M_sectors,K-K_FWA);
 distances = zeros(M_sectors,K);
 distancesUEs = zeros(K,K);
-pilotIndex = zeros(K,1);
 D_FWA = ones(M_sectors,K_FWA);
 D_cell = ones(M_sectors,K-K_FWA);
     
@@ -579,10 +578,7 @@ end
 %gain, so picking the strongest BS entries maps each CPE/UE to the
 %sector(s) whose beam covers it
 %Sectored deployment: every CPE is served by its single strongest
-%sector, mirroring the cellular association below. (The legacy
-%cell-free Lmax multi-AP association was removed: with co-located
-%sectors it could double-serve a CPE from one site and made
-%donor_of pick the lowest-indexed rather than the strongest sector.)
+%sector, mirroring the cellular association below
 for k = 1:K_FWA
     [~, idxs] = sort(gainOverNoisedB(:,k), 'descend');
     idxs_not_chosen = idxs(2:end);
