@@ -347,7 +347,7 @@ params.ncr_rank = 1; %NCR forwarded spatial layers: 1 = Rel-18 single-chain
                      %https://arxiv.org/pdf/2403.09601); params.N_UE_cell =
                      %beyond-Rel-18 MIMO-repeater what-if (details in
                      %compute_link_rates_OFDM_wi_repeater.m)
-num_rep_arr = [6 12 18]; %total enabled repeaters; greedy max-coverage attachment
+num_rep_arr = 1:1:12; %total enabled repeaters; greedy max-coverage attachment
 params.ncr_benefit_gate = 1; %per-UE NCR ON/OFF side control (TR 38.867); =0 only for ablation
                      %is per donor sector, saturating near one per sector (6)
 params.FWA_REPEAT = 0; %DISABLED for now (avoids confounding the cellular-side
