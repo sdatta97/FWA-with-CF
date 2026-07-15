@@ -347,7 +347,8 @@ params.ncr_rank = 1; %NCR forwarded spatial layers: 1 = Rel-18 single-chain
                      %https://arxiv.org/pdf/2403.09601); params.N_UE_cell =
                      %beyond-Rel-18 MIMO-repeater what-if (details in
                      %compute_link_rates_OFDM_wi_repeater.m)
-num_rep_arr = 1:1:12; %total enabled repeaters; greedy max-coverage attachment
+num_rep_arr = 0:1:12; %total (0 = no-NCR baseline: sources the plain-cellular
+                       %packing matrices and the pool-sweep reference) enabled repeaters; greedy max-coverage attachment
 params.ncr_benefit_gate = 1; %per-UE NCR ON/OFF side control (TR 38.867); =0 only for ablation
                      %is per donor sector, saturating near one per sector (6)
 params.FWA_REPEAT = 0; %DISABLED for now (avoids confounding the cellular-side
@@ -825,7 +826,11 @@ end
                 else
                     cellTag = 'packing_cell_plain_';
                 end
-                writematrix(rate_dl, strcat(packFolder,'/',cellTag,num2str(numCPE_all),'CPE_',num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
+                if num_rep_arr(idxnumrep) == 0 %packing matrices ONLY at the
+                    %no-NCR baseline (the packing figure's configuration; the
+                    %activity token keeps the sweep's operating points apart)
+                    writematrix(rate_dl, strcat(packFolder,'/',cellTag,num2str(numCPE_all),'CPE_',num2str(activity_arr(idxActivity)),'act_',num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
+                end
                 if (quantile(mean_rate_dl_cell,params.loss_pc_cell)>=params.r_min_cell)
                     params.Band = max(params.Band*(1-params.r_min_cell/quantile(mean_rate_dl_cell,params.loss_pc_cell)),0);
                     if (params.Band > 0)
@@ -877,11 +882,11 @@ end
                     mean_rate_dl_FWA = mean(rate_dl,2);
                     save_old_rate = rate_dl;
                     save_old_mean_FWA = mean_rate_dl_FWA;
-                    if params.Band > 0
+                    if params.Band > 0 && num_rep_arr(idxnumrep) == 0
                         %raw FWA packing matrix (skipped if the cell phase
-                        %consumed the whole band: all-zero rates carry no
-                        %distribution information)
-                        writematrix(rate_dl, strcat(packFolder,'/packing_FWA_',num2str(numCPE_all),'CPE_',num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
+                        %consumed the whole band; first pool size only, with
+                        %the activity operating point in the tag)
+                        writematrix(rate_dl, strcat(packFolder,'/packing_FWA_',num2str(numCPE_all),'CPE_',num2str(activity_arr(idxActivity)),'act_',num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
                     end
                     Band_FWA = params.Band;
                     for idxrmin = 1:size(fwa_demand_configs,1)
@@ -1004,9 +1009,12 @@ end
                         if writeHeader
                             fprintf(fileID, naming.header);
                         end
-                        fprintf(fileID, '%s,%d,%d,%d,%f,%f,%f\n', naming.rowfmt(currVals), ...
-                            numCPE_all, K_FWA_init, K_FWA_max, Band_FWA, ...
-                            sum(mean_rate_dl_cell)/(Band - Band_FWA), FWA_se_out);
+                        %cell_se_ue: cellular spectral efficiency PER UE (sum SE
+                        %over the cellular band divided by the UE count) - the
+                        %per-terminal counterpart of the per-CPE FWA_se column
+                        fprintf(fileID, '%s,%d,%d,%d,%d,%f,%f,%f\n', naming.rowfmt(currVals), ...
+                            numCPE_all, M_sectors*numUE, K_FWA_init, K_FWA_max, Band_FWA, ...
+                            sum(mean_rate_dl_cell)/(Band - Band_FWA)/(M_sectors*numUE), FWA_se_out);
                         fclose(fileID);
                     end
         end

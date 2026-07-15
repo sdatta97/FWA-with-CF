@@ -55,6 +55,26 @@ if isfile(summaryFile)
     legend(legends,'Location','northeast');
     styleIEEE(fig);
     saveIEEE(fig, plotDir, 'K_FWA_vs_rmin');
+    %(b2) per-terminal spectral efficiency: cellular SE per UE vs FWA SE
+    %per CPE, at the no-NCR baseline (num_rep = 0), across the busy-hour
+    %activity axis - the per-terminal monetization contrast
+    if all(ismember({'cell_se_ue','activity'}, summaryTable.Properties.VariableNames)) && any(summaryTable.num_rep == 0)
+        fig = figure; hold on; grid on;
+        rows0 = summaryTable.num_rep == 0 & lower(string(summaryTable.demand_profile)) == "low";
+        [xa,orda] = sort(summaryTable.activity(rows0));
+        yc = summaryTable.mean_cell_se_ue(rows0); yc = yc(orda);
+        yf = summaryTable.mean_FWA_se(rows0); yf = yf(orda);
+        ec = summaryTable.std_cell_se_ue(rows0); ec = ec(orda); ec(isnan(ec)) = 0;
+        ef = summaryTable.std_FWA_se(rows0); ef = ef(orda); ef(isnan(ef)) = 0;
+        errorbar(100*xa, yc, ec, markers{1}, 'LineWidth', 1);
+        errorbar(100*xa, yf, ef, markers{2}, 'LineWidth', 1);
+        set(gca,'YScale','log');
+        xlabel('Busy-hour device activity (\%)','Interpreter','latex');
+        ylabel('Spectral efficiency per terminal (bit/s/Hz)');
+        legend({'Cellular, per UE','FWA, per CPE'},'Location','east');
+        styleIEEE(fig);
+        saveIEEE(fig, plotDir, 'SE_per_terminal');
+    end
     %(b) bandwidth freed for FWA vs the number of enabled NCRs, at the
     %entry-tier plan rate (Fig. 5 of the paper)
     fig = figure; hold on; grid on;
@@ -73,8 +93,16 @@ end
 
 %% 2) Packing figure: safe load fraction vs planning outage target
 packingFile = fullfile(packDir,'packing_f_curves.csv');
+%the classic packing figure uses the reference operating point: the
+%activity value closest to the 5% busy-hour share
+
 if isfile(packingFile)
     packingTable = readtable(packingFile);
+if ismember('activity', packingTable.Properties.VariableNames)
+    [~,ia] = min(abs(unique(packingTable.activity) - 0.05));
+    ua = unique(packingTable.activity);
+    packingTable = packingTable(packingTable.activity == ua(ia),:);
+end
     fig = figure; hold on; grid on;
     legends = {};
     plot(100*packingTable.eps, packingTable.f_FWA, '-o', 'LineWidth', 1, ...

@@ -25,7 +25,7 @@ else
     naming.folder = 'FWA_const_none';
     naming.file = ['results_' aID '.csv'];
 end
-naming.header = [strjoin([sweepNames(isSwept), {'numCPE','init_FWA','max_FWA','Band_FWA','cell_se','FWA_se'}], ',') '\n'];
+naming.header = [strjoin([sweepNames(isSwept), {'numCPE','numUE','init_FWA','max_FWA','Band_FWA','cell_se_ue','FWA_se'}], ',') '\n'];
 naming.rowfmt = @(currVals) strjoin(cellfun(fmt1, currVals(isSwept), 'UniformOutput', false), ',');
 end
 

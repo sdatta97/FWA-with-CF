@@ -23,7 +23,7 @@ packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
 %by the constant values. Each folder is summarized independently; group
 %keys are ALL non-outcome columns, so the aggregation adapts to
 %whatever axes were swept.
-outcomeVars = {'numCPE','init_FWA','max_FWA','Band_FWA','cell_se','FWA_se'};
+outcomeVars = {'numCPE','numUE','init_FWA','max_FWA','Band_FWA','cell_se_ue','FWA_se'};
 constDirs = dir(fullfile(repoRoot,'resultData','FWA_const_*'));
 constDirs = constDirs([constDirs.isdir]);
 for cd_i = 1:numel(constDirs)
@@ -63,55 +63,66 @@ end
 %be declined on poor links (FCC 24-27), so the usable fraction is
 %computed per drop from the per-CPE quantiles, then averaged over drops.
 %The ratio f_FWA/f_cell is the packing multiple of revenue potential.
-fwaFiles = dir(fullfile(packDir,'packing_FWA_*CPE_*rep_*.csv'));
+fwaFiles = dir(fullfile(packDir,'packing_FWA_*CPE_*act_*rep_*.csv'));
 if ~isempty(fwaFiles)
     eps_grid = (0.01:0.01:0.20)';
-    %use the smallest CPE-count and num_rep tags present, so the curves
-    %come from one consistent configuration
-    tok = regexp({fwaFiles.name},'packing_FWA_(\d+)CPE_(\d+)rep_','tokens','once');
-    cpeTags = cellfun(@(c) str2double(c{1}), tok);
-    repTags = cellfun(@(c) str2double(c{2}), tok);
+    %one consistent (CPE count, pool) configuration - the smallest tags -
+    %reduced separately at EVERY activity operating point present
+    tok = regexp({fwaFiles.name},'packing_FWA_(\d+)CPE_([\d.]+)act_(\d+)rep_','tokens','once');
+    cpeTags = cellfun(@(x) str2double(x{1}), tok);
+    actTags = cellfun(@(x) str2double(x{2}), tok);
+    repTags = cellfun(@(x) str2double(x{3}), tok);
     ncpe = min(cpeTags);
     nrep = min(repTags(cpeTags == ncpe));
-    tag = sprintf('%dCPE_%drep', ncpe, nrep);
-    fwaFiles = fwaFiles(cpeTags == ncpe & repTags == nrep);
-    pool_cell_rep = [];
-    pool_cell_plain = [];
-    f_FWA_per_seed = zeros(numel(fwaFiles),numel(eps_grid));
-    for f = 1:numel(fwaFiles)
-        seed_id = erase(erase(fwaFiles(f).name,sprintf('packing_FWA_%s_',tag)),'.csv');
-        rate_FWA = readmatrix(fullfile(packDir,fwaFiles(f).name));
-        for ie = 1:numel(eps_grid)
-            f_FWA_per_seed(f,ie) = sum(quantile(rate_FWA,eps_grid(ie),2))/sum(mean(rate_FWA,2));
+    acts = unique(actTags(cpeTags == ncpe & repTags == nrep));
+    allRows = [];
+    for ai = 1:numel(acts)
+        act = acts(ai);
+        tag = sprintf('%dCPE_%gact_%drep', ncpe, act, nrep);
+        sel = fwaFiles(cpeTags == ncpe & actTags == act & repTags == nrep);
+        pool_cell_rep = [];
+        pool_cell_plain = [];
+        f_FWA_per_seed = zeros(numel(sel),numel(eps_grid));
+        for f = 1:numel(sel)
+            seed_id = erase(erase(sel(f).name,sprintf('packing_FWA_%s_',tag)),'.csv');
+            rate_FWA = readmatrix(fullfile(packDir,sel(f).name));
+            for ie = 1:numel(eps_grid)
+                f_FWA_per_seed(f,ie) = sum(quantile(rate_FWA,eps_grid(ie),2))/sum(mean(rate_FWA,2));
+            end
+            fcr = fullfile(packDir,sprintf('packing_cell_rep_%s_%s.csv',tag,seed_id));
+            if isfile(fcr)
+                m = readmatrix(fcr); pool_cell_rep = [pool_cell_rep; m(:)]; %#ok<AGROW>
+            end
+            %plain-cellular baseline: an explicit CELL_REPEAT = 0 file if
+            %present, else the num_rep = 0 cellular matrix (statistically
+            %equivalent: CPEs present but inert, verified to 0.07%)
+            fcp = fullfile(packDir,sprintf('packing_cell_plain_%s_%s.csv',tag,seed_id));
+            if ~isfile(fcp)
+                fcp = fullfile(packDir,sprintf('packing_cell_rep_%dCPE_%gact_0rep_%s.csv',ncpe,act,seed_id));
+            end
+            if isfile(fcp)
+                m = readmatrix(fcp); pool_cell_plain = [pool_cell_plain; m(:)]; %#ok<AGROW>
+            end
         end
-        fcr = fullfile(packDir,sprintf('packing_cell_rep_%s_%s.csv',tag,seed_id));
-        if isfile(fcr)
-            m = readmatrix(fcr); pool_cell_rep = [pool_cell_rep; m(:)]; %#ok<AGROW>
+        f_FWA = mean(f_FWA_per_seed,1)';
+        f_cell_rep = nan(numel(eps_grid),1);
+        f_cell_plain = nan(numel(eps_grid),1);
+        if ~isempty(pool_cell_rep)
+            f_cell_rep = arrayfun(@(e) quantile(pool_cell_rep,e)/mean(pool_cell_rep), eps_grid);
         end
-        fcp = fullfile(packDir,sprintf('packing_cell_plain_%s_%s.csv',tag,seed_id));
-        if isfile(fcp)
-            m = readmatrix(fcp); pool_cell_plain = [pool_cell_plain; m(:)]; %#ok<AGROW>
+        if ~isempty(pool_cell_plain)
+            f_cell_plain = arrayfun(@(e) quantile(pool_cell_plain,e)/mean(pool_cell_plain), eps_grid);
+        end
+        allRows = [allRows; table(eps_grid, act*ones(size(eps_grid)), f_FWA, f_cell_rep, f_cell_plain, ...
+            'VariableNames',{'eps','activity','f_FWA','f_cell_rep','f_cell_plain'})]; %#ok<AGROW>
+        [~,i5] = min(abs(eps_grid - 0.05));
+        if ~isnan(f_cell_rep(i5))
+            fprintf('packing act %g (%d seeds, %s): eps 5%%: f_FWA %.3f, f_cell(NCR) %.3f, multiple %.2fx\n', ...
+                act, numel(sel), tag, f_FWA(i5), f_cell_rep(i5), f_FWA(i5)/f_cell_rep(i5));
         end
     end
-    f_FWA = mean(f_FWA_per_seed,1)';
-    f_cell_rep = nan(numel(eps_grid),1);
-    f_cell_plain = nan(numel(eps_grid),1);
-    if ~isempty(pool_cell_rep)
-        f_cell_rep = arrayfun(@(e) quantile(pool_cell_rep,e)/mean(pool_cell_rep), eps_grid);
-    end
-    if ~isempty(pool_cell_plain)
-        f_cell_plain = arrayfun(@(e) quantile(pool_cell_plain,e)/mean(pool_cell_plain), eps_grid);
-    end
-    packingTable = table(eps_grid, f_FWA, f_cell_rep, f_cell_plain, ...
-        'VariableNames',{'eps','f_FWA','f_cell_rep','f_cell_plain'});
-    writetable(packingTable, fullfile(packDir,'packing_f_curves.csv'));
-    [~,i5] = min(abs(eps_grid - 0.05));
-    fprintf('packing curves (%d seeds, %s pool) -> %s\n', numel(fwaFiles), tag, ...
-        fullfile(packDir,'packing_f_curves.csv'));
-    if ~isnan(f_cell_rep(i5))
-        fprintf('eps = 5%%: f_FWA = %.3f, f_cell(NCR) = %.3f, packing multiple = %.2fx\n', ...
-            f_FWA(i5), f_cell_rep(i5), f_FWA(i5)/f_cell_rep(i5));
-    end
+    writetable(allRows, fullfile(packDir,'packing_f_curves.csv'));
+    fprintf('packing curves -> %s\n', fullfile(packDir,'packing_f_curves.csv'));
 else
     fprintf('no packing matrices found in %s\n', packDir);
 end
