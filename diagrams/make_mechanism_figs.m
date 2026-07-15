@@ -1,5 +1,6 @@
 %MECHANISM SCHEMATICS for the FWA-cellular paper: side-elevation vignettes
-%reusing the deployment figure's glyph/color vocabulary.
+%reusing the deployment figure's glyph/color vocabulary. Sized ~1.3:1 for
+%one column of a two-column template; no baked-in caption (use \caption).
 % (A) NCR-aided support: relayed cellular path over a blocker.
 % (B) Interference nulling: static CPE array nulls the interfering gNB.
 outdir = '/Users/sdatta/FWA-with-CF/plots';
@@ -19,62 +20,53 @@ col.intf   = [0.72 0.10 0.16];
 col.blk    = [0.55 0.55 0.55];
 
 %% ============ Figure A: NCR-aided cellular support ============
-fig = figure('Position',[100 100 520 300],'Color','w'); hold on
-groundLine(0, 100);
-drawMast(8, 33, col);                              % serving gNB
-drawBuilding(50, 11, 30, col.apt, col);            % tall apartment = blocker
-drawBuilding(29, 9, 15, col.office, col);          % office w/ NCR-CPE
-drawCPE(29, 15, col);
-for xt = [64 71 78 88 94], drawTree(xt, 7+2*mod(xt,3), col); end
-drawUE(80, col);                                   % cell-edge UE in NLOS
+fig = figure('Position',[100 100 430 325],'Color','w'); hold on
+groundLine(0, 70);
+drawMast(7, 32, col);                               % serving gNB
+drawBuilding(43, 11, 30, col.apt, col);             % tall apartment = blocker
+drawBuilding(24, 9, 15, col.office, col);           % office w/ NCR-CPE
+drawCPE(24, 15, col);
+for xt = [53 59 68], drawTree(xt, 8, col); end
+drawUE(64, col);                                    % cell-edge UE in NLOS
 
-% direct path (blocked by the apartment)
-arc([8 33],[80 3],[30 44], col.blk, 1.1, ':');
-plot(50, 30, 'x', 'Color',col.blk,'MarkerSize',11,'LineWidth',2);
-text(67,22,'weak direct path (NLOS)','Color',col.blk,'FontSize',8,'FontName','Times New Roman','HorizontalAlignment','center');
+% direct path (blocked) and relayed path gNB -> NCR -> UE
+arc([7 32],[64 3],[25 39], col.blk, 1.1, ':');
+plot(43, 30, 'x','Color',col.blk,'MarkerSize',10,'LineWidth',1.8);
+arc([7 32],[24 16],[14 32], col.relay, 1.6, '-');
+beamCone([24 16],[64 3], 2.6, col.relay);
+arc([24 16],[64 3],[44 20], col.relay, 1.6, '-');
 
-% relayed path: gNB -> NCR, then NCR -> UE (with a service beam cone)
-arc([8 33],[29 16],[18 33], col.relay, 1.6, '-');
-beamCone([29 16],[80 3], 3, col.relay);
-arc([29 16],[80 3],[55 20], col.relay, 1.6, '-');
-text(17,29,'gNB\rightarrowNCR','Color',col.relay,'FontSize',8,'FontName','Times New Roman');
-text(52,15,'NCR\rightarrowUE (cellular band)','Color',col.relay,'FontSize',8,'FontName','Times New Roman');
-text(29,20,'NCR','Color',col.cpe,'FontSize',8,'FontWeight','bold','FontName','Times New Roman','HorizontalAlignment','center');
-
-text(50,-9,'NCR boosts cell-edge SE \rightarrow frees bandwidth for FWA', ...
-    'FontSize',8.5,'FontAngle','italic','FontName','Times New Roman','HorizontalAlignment','center');
-finishAxes([-2 100],[-13 50]);
+nodeLabel(7,-4,'gNB',[0 0 0]);
+nodeLabel(24,21,'NCR',col.cpe);
+nodeLabel(64,-4,'cellular UE',col.ue);
+legendBox(4,47,{{':',col.blk,'weak direct path'},{'-',col.relay,'NCR-relayed path'}});
+finishAxes([-3 71],[-7 49]);
 drawnow; exportgraphics(fig, fullfile(outdir,'mech_ncr_support.png'),'Resolution',300);
 drawnow; exportgraphics(fig, fullfile(outdir,'mech_ncr_support.eps'));
 savefig(fig, fullfile(outdir,'mech_ncr_support.fig'));
 
 %% ============ Figure B: interference nulling at the CPE ============
-fig = figure('Position',[100 100 520 300],'Color','w'); hold on
-groundLine(0, 100);
-drawMast(8, 33, col);                              % serving gNB
-drawMast(92, 33, col);                             % interfering gNB
-drawBuilding(47, 12, 18, col.office, col);         % FWA CPE building
-drawArray(47, 18);                                 % 8-element rooftop array
-for xt = [24 70 78], drawTree(xt, 7, col); end
+fig = figure('Position',[100 100 430 337],'Color','w'); hold on
+groundLine(0, 70);
+drawMast(7, 32, col);                               % serving gNB
+drawMast(63, 32, col);                              % interfering gNB
+drawBuilding(35, 12, 18, col.office, col);          % FWA CPE building
+drawArray(35, 18);                                  % 8-element rooftop array
+for xt = [17 50 55], drawTree(xt, 7, col); end
 
-% CPE receive pattern first (so paths overlay it): lobe to serving gNB, null to interferer
-rxPattern(47, 25, 11, col.cpe);
-text(40,10,'CPE','Color',col.cpe,'FontSize',8,'FontWeight','bold','FontName','Times New Roman','HorizontalAlignment','right');
+% CPE receive pattern (lobe to serving gNB, null to interferer), then the paths
+rxPattern(35, 25, 10, col.cpe);
+beamCone([7 32],[34 21], 2.2, col.beam);
+arc([7 32],[34 21],[19 30], col.beam, 1.7, '-');
+arc([63 32],[41 24],[52 30], col.intf, 1.3, '--');
+plot(44, 24, 'x','Color',col.intf,'MarkerSize',11,'LineWidth',2);
+text(47,15,'receive null','Color',col.intf,'FontSize',8,'FontName','Times New Roman');
 
-% desired beam from serving gNB
-beamCone([8 33],[45 22], 2.4, col.beam);
-arc([8 33],[45 22],[26 31], col.beam, 1.7, '-');
-text(19,32,'desired FWA beam','Color',col.beam,'FontSize',8,'FontName','Times New Roman');
-
-% interference from the other gNB, nulled at the CPE
-arc([92 33],[54 24],[72 31], col.intf, 1.3, '--');
-plot(57, 24, 'x','Color',col.intf,'MarkerSize',12,'LineWidth',2.2);
-text(74,31,'interfering gNB','Color',col.intf,'FontSize',8,'FontName','Times New Roman');
-text(60,17,'receive null','Color',col.intf,'FontSize',8,'FontName','Times New Roman');
-
-text(50,-9,'Static CPE + 8-antenna array \rightarrow interference null \rightarrow higher FWA SE', ...
-    'FontSize',8.5,'FontAngle','italic','FontName','Times New Roman','HorizontalAlignment','center');
-finishAxes([-2 102],[-13 52]);
+nodeLabel(7,-4,'serving gNB',[0 0 0]);
+nodeLabel(63,-4,'interfering gNB',col.intf);
+nodeLabel(35,-4,'CPE',col.cpe);
+legendBox(16,49,{{'-',col.beam,'desired FWA beam'},{'--',col.intf,'interference (nulled)'}});
+finishAxes([-3 71],[-7 51]);
 drawnow; exportgraphics(fig, fullfile(outdir,'mech_interf_null.png'),'Resolution',300);
 drawnow; exportgraphics(fig, fullfile(outdir,'mech_interf_null.eps'));
 savefig(fig, fullfile(outdir,'mech_interf_null.fig'));
@@ -121,7 +113,7 @@ function arc(p0,p2,ctrl,c,lw,ls)
     b=(1-t).^2.*p0 + 2*(1-t).*t.*ctrl + t.^2.*p2;
     plot(b(:,1),b(:,2),ls,'Color',c,'LineWidth',lw);
     d=b(end,:)-b(end-1,:); d=d/norm(d); n=[-d(2) d(1)];
-    hd=b(end,:); s=2.2;
+    hd=b(end,:); s=2.0;
     fill([hd(1) hd(1)-s*d(1)+0.5*s*n(1) hd(1)-s*d(1)-0.5*s*n(1)], ...
          [hd(2) hd(2)-s*d(2)+0.5*s*n(2) hd(2)-s*d(2)-0.5*s*n(2)], c,'EdgeColor','none');
 end
@@ -137,6 +129,19 @@ function rxPattern(x,z,sc,c)
     px=x+r.*cos(th); pz=z+0.62*r.*sin(th);
     fill(px,pz,c,'EdgeColor','none','FaceAlpha',0.18);
     plot(px,pz,'-','Color',c,'LineWidth',0.8);
+end
+function nodeLabel(x,y,txt,c)
+    text(x,y,txt,'Color',c,'FontSize',8,'FontWeight','bold', ...
+        'FontName','Times New Roman','HorizontalAlignment','center');
+end
+function legendBox(x0,y0,entries)
+    dy=4.4; lw=7;
+    for i=1:numel(entries)
+        yy=y0-(i-1)*dy; e=entries{i};
+        plot([x0 x0+lw],[yy yy], e{1},'Color',e{2},'LineWidth',1.6);
+        text(x0+lw+2, yy, e{3},'Color',[0.15 0.15 0.15],'FontSize',8, ...
+            'FontName','Times New Roman','VerticalAlignment','middle');
+    end
 end
 function finishAxes(xl,yl)
     axis equal; axis off; xlim(xl); ylim(yl);
