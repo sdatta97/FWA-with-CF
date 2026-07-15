@@ -596,8 +596,16 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         params.CPE_locations = CPE_locations;
         params.Band = Band; %Communication bandwidth
 
+    %% align the inter-site axis with x so the two cells sit side by side
+    %(the sites are dropped on a random axis; this removes the diagonal
+    %layout and its empty corners without changing any geometry)
+    thR = -atan2(siteLocations(2,2)-siteLocations(1,2), siteLocations(2,1)-siteLocations(1,1));
+    Rm = [cos(thR) sin(thR); -sin(thR) cos(thR)];
+    siteLocations = siteLocations*Rm; CPE_locations = CPE_locations*Rm;
+    UE_locations = UE_locations*Rm;   opC = opC*exp(1i*thR);
     %% --- deployment diagram: active devices at the 5% activity level ---
-    fig = figure('Position',[100 100 760 700]); hold on; axis equal; grid on;
+    set(0,'DefaultFigureVisible','off');
+    fig = figure('Position',[100 100 980 520],'Visible','off'); hold on; axis equal; grid on;
     th = linspace(0,2*pi,200);
     %zone boundaries per site: apartment ring, single-family belt, cell edge
     for s = 1:M_sites
@@ -631,11 +639,14 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         sprintf('UE, pedestrian 3 km/h (%d)',sum(ped)), sprintf('UE, indoor 3 km/h (%d)',sum(ind)), ...
         sprintf('UE, in-car 40 km/h (%d)',sum(fast))}, 'Location','northeastoutside','FontSize',8);
     xlabel('x (m)'); ylabel('y (m)');
-    title(sprintf('Deployment, seed %s: active devices at %.0f%% busy-hour activity, %.0f%% take rate', aID, 100*activity_arr(idxActivity), 100*take_rate_arr(idxnumCPE)),'FontSize',9,'Interpreter','none');
     set(gca,'FontSize',9,'FontName','Times New Roman');
+    mx = 1.05*max(abs([CPE_locations(:,1);UE_locations(:,1)]));
+    my = 1.10*max(abs([CPE_locations(:,2);UE_locations(:,2)]));
+    xlim([-mx mx]); ylim([-my my]);
     if not(isfolder('plots')), mkdir('plots'), end
-    exportgraphics(fig, 'plots/deployment_active_5pct.png', 'Resolution', 220);
+    drawnow;
     savefig(fig, 'plots/deployment_active_5pct.fig');
+    exportgraphics(fig, 'plots/deployment_active_5pct.png', 'Resolution', 220);
     exportgraphics(fig, 'plots/deployment_active_5pct.eps');
     fprintf('diagram saved: %d CPEs, %d active UEs\n', size(CPE_locations,1), size(UE_locations,1));
     end %idxActivity

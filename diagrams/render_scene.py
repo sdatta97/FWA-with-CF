@@ -55,7 +55,14 @@ rows = list(csv.DictReader(open(CSV)))
 gnbs = [r for r in rows if r['type'] == 'gnb']
 veg  = [r for r in rows if r['type'] == 'veg'][0]
 r_in, r_out = float(veg['height']), float(veg['width'])  # homeRadius, deployRange
-sites = [(float(g['x']), float(g['y'])) for g in gnbs]
+sites_raw = [(float(g['x']), float(g['y'])) for g in gnbs]
+# rotate the whole scene so the inter-site axis aligns with world x: the two
+# cells then sit side by side and fill the frame instead of on a diagonal
+theta = math.atan2(sites_raw[1][1] - sites_raw[0][1], sites_raw[1][0] - sites_raw[0][0])
+ct, st = math.cos(-theta), math.sin(-theta)
+def rot(x, y):
+    return (x * ct - y * st, x * st + y * ct)
+sites = [rot(x, y) for (x, y) in sites_raw]
 
 # ground / vegetation / inner residential discs per site (stacked thin cylinders)
 for (cx, cy) in sites:
@@ -70,7 +77,7 @@ for r in rows:
     if t in FLOORS:
         lo, hi, w = FLOORS[t]
         h = ZX * 3 * random.randint(lo, hi)
-        x, y = float(r['x']), float(r['y'])
+        x, y = rot(float(r['x']), float(r['y']))
         box(x, y, w, h, M[t])
         box(x, y, 7, 3, M['cpe'], z0=h)
 
@@ -93,7 +100,7 @@ for (cx, cy) in sites:
 
 # active devices
 for r in rows:
-    x, y = float(r['x']), float(r['y'])
+    x, y = rot(float(r['x']), float(r['y']))
     if r['type'] == 'car':
         box(x, y, 11, ZX * 1.6, M['car'])
     elif r['type'] in ('ped', 'indoor'):
@@ -107,21 +114,21 @@ sun.rotation_euler = (math.radians(50), 0, math.radians(-35))
 bpy.data.worlds['World'].node_tree.nodes['Background'].inputs[0].default_value = (0.72, 0.80, 0.92, 1)
 bpy.data.worlds['World'].node_tree.nodes['Background'].inputs[1].default_value = 0.55
 
-# camera: high oblique, tracking the midpoint between the sites
-bpy.ops.object.empty_add(location=(0, 0, 0)); target = bpy.context.object
-az, el, dist = math.radians(-38), math.radians(27), 3400
-cx = dist * math.cos(el) * math.sin(az); cy = -dist * math.cos(el) * math.cos(az); cz = dist * math.sin(el)
+# camera: tighter, more top-down oblique, centred on the two side-by-side cells
+bpy.ops.object.empty_add(location=(0, 0, 18)); target = bpy.context.object
+az, el, dist = math.radians(-15), math.radians(35), 3900
+cx = dist * math.cos(el) * math.sin(az); cy = -dist * math.cos(el) * math.cos(az); cz = target.location[2] + dist * math.sin(el)
 bpy.ops.object.camera_add(location=(cx, cy, cz))
-cam = bpy.context.object; cam.data.clip_end = 20000; cam.data.lens = 50
+cam = bpy.context.object; cam.data.clip_end = 20000; cam.data.lens = 48
 tr = cam.constraints.new('TRACK_TO'); tr.target = target
 bpy.context.scene.camera = cam
 
-# render
+# render (wide aspect matched to the two side-by-side cells to minimise empty frame)
 sc = bpy.context.scene
 sc.render.engine = 'CYCLES'
 sc.cycles.samples = 96
 sc.cycles.use_denoising = True
-sc.render.resolution_x, sc.render.resolution_y = 1800, 1150
+sc.render.resolution_x, sc.render.resolution_y = 1800, 820
 sc.render.filepath = OUT
 bpy.ops.render.render(write_still=True)
 print('RENDER DONE:', OUT)

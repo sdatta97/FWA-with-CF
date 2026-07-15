@@ -596,10 +596,17 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         params.CPE_locations = CPE_locations;
         params.Band = Band; %Communication bandwidth
 
+    %% align the inter-site axis with x so the two cells sit side by side
+    %(also feeds the Blender export below; its own alignment is then a no-op)
+    thR = -atan2(siteLocations(2,2)-siteLocations(1,2), siteLocations(2,1)-siteLocations(1,1));
+    Rm = [cos(thR) sin(thR); -sin(thR) cos(thR)];
+    siteLocations = siteLocations*Rm; CPE_locations = CPE_locations*Rm;
+    UE_locations = UE_locations*Rm;   opC = opC*exp(1i*thR);
 
     %% --- 3D deployment diagram: buildings, masts, vegetation ---
     rng(7); %visual-only randomness (tree placement, unmodeled heights)
-    fig = figure('Position',[80 60 1000 760], 'Color','w');
+    set(0,'DefaultFigureVisible','off');
+    fig = figure('Position',[80 60 1100 620], 'Color','w','Visible','off');
     hold on
     %ground disc per site + vegetation annulus
     th = linspace(0,2*pi,120);
@@ -682,10 +689,14 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         'Location','northwest','FontSize',8);
     lg.Box = 'off';
     axis off; grid off
-    daspect([1 1 0.15]); view(-38, 32);
+    daspect([1 1 0.16]); view(-14, 34);
+    mx = 1.04*max(abs([CPE_locations(:,1);UE_locations(:,1)]));
+    my = 1.10*max(abs([CPE_locations(:,2);UE_locations(:,2)]));
+    xlim([-mx mx]); ylim([-my my]);
     camlight('headlight'); lighting gouraud; material dull
-    exportgraphics(fig, 'plots/deployment_3d_5pct.png', 'Resolution', 240);
+    drawnow;
     savefig(fig, 'plots/deployment_3d_5pct.fig');
+    exportgraphics(fig, 'plots/deployment_3d_5pct.png', 'Resolution', 240);
     fprintf('3D diagram saved (%d buildings, %d active UEs)\n', size(CPE_locations,1), size(UE_locations,1));
     %also export the scene geometry for the Blender pipeline
     fid = fopen('plots/deployment_scene.csv','w');
