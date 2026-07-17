@@ -60,7 +60,7 @@ beamCone([7 32],[34 21], 2.2, col.beam);
 arc([7 32],[34 21],[19 30], col.beam, 1.7, '-');
 arc([63 32],[41 24],[52 30], col.intf, 1.3, '--');
 plot(44, 24, 'x','Color',col.intf,'MarkerSize',11,'LineWidth',2);
-text(47,15,'receive null','Color',col.intf,'FontSize',8,'FontName','Times New Roman');
+text(52,15,{'null in the direction','of other gNB'},'Color',col.intf,'FontSize',8,'FontName','Times New Roman','HorizontalAlignment','center');
 
 nodeLabel(7,-4,'serving gNB',[0 0 0]);
 nodeLabel(63,-4,'interfering gNB',col.intf);

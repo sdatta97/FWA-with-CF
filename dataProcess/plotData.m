@@ -1,5 +1,6 @@
 close all;
 clear;
+set(0,'DefaultFigureVisible','off');
 %plotData: PLOTTING ONLY. Reads the files stored by combineData.m
 %(summary.csv for the sweep, packing_f_curves.csv for the packing
 %analysis) and produces the journal figures, styled for the IEEE
@@ -34,50 +35,37 @@ packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
 plotDir = fullfile(repoRoot,'plots');
 
 T = readtable(fullfile(sweepDir,'summary.csv'));
-takeRef = max(T.take_rate);                       %largest take rate = most CPEs
-[~,ia] = min(abs(unique(T.activity)-0.05)); ua=unique(T.activity); actRef=ua(ia);
-reps = unique(T.num_rep); repRef = reps(min(1+find(reps>=6,1,'first')-1, numel(reps)));
-if isempty(repRef), repRef = reps(round(end/2)); end
+takeRef = max(T.take_rate);       %largest take rate = most CPEs
+%FIXED busy-hour device activity: 5%% - the most defensible US-suburban
+%value (top of the 3-5%% suburban range, and it reproduces the ITU-R
+%M.2412 ~10-users-per-TRxP evaluation density; see SimulationMain.m).
+actRef = 0.05;
+ua = unique(T.activity); if ~any(ua==actRef), [~,ia]=min(abs(ua-0.05)); actRef=ua(ia); end
 tiers = {'low','medium','high'}; tierLbl = {'Low demand','Medium demand','High demand'};
-tierMark = {'-o','-s','-d'};
+tcol = [0 0.45 0.74; 0.85 0.33 0.10; 0.47 0.67 0.19]; tmk = {'-s','-d','-^'};
 
-%% Fig 1: bandwidth freed for FWA vs #NCRs, one curve per activity
-%(Band_FWA is tier-invariant, so activity is the informative legend axis)
-fig=figure; hold on; grid on; L={};
-for a = unique(T.activity)'
-    rows = T.take_rate==takeRef & T.activity==a & strcmp(T.demand_profile,'low');
-    if ~any(rows), continue, end
-    [x,o]=sort(T.num_rep(rows)); y=T.mean_Band_FWA(rows)/1e6; y=y(o);
-    e=T.std_Band_FWA(rows)/1e6; e=e(o); e(isnan(e))=0;
-    errorbar(x,y,e,'-o','LineWidth',1); L{end+1}=sprintf('%.1f%% activity',100*a); %#ok<SAGROW>
-end
+%% Dual-axis figure at the fixed activity: bandwidth freed for FWA (left,
+%tier-invariant) and FWA subscribers served (right, one curve per demand
+%tier), vs the number of NCRs. Error bars = +/-1 s.e. over seeds.
+fig=figure('Visible','off'); hold on; grid on;
+yyaxis left
+rB = T.take_rate==takeRef & T.activity==actRef & strcmp(T.demand_profile,'low'); %tier-invariant
+[xb,ob]=sort(T.num_rep(rB)); yb=T.mean_Band_FWA(rB)/1e6; yb=yb(ob);
+eb=(T.std_Band_FWA(rB)/1e6)./sqrt(T.GroupCount(rB)); eb=eb(ob); eb(isnan(eb))=0;
+hB=errorbar(xb,yb,eb,'-o','LineWidth',1.4,'Color','k','MarkerFaceColor','k','MarkerSize',4);
+ylabel('Bandwidth freed for FWA (MHz)'); set(gca,'YColor','k');
+yyaxis right
+%only the high-demand tier is informative here: low/medium are already
+%served in full (flat), so NCRs add subscribers only at the high tier
+r = T.take_rate==takeRef & T.activity==actRef & strcmp(T.demand_profile,'high');
+[x,o]=sort(T.num_rep(r)); y=T.mean_init_FWA(r); y=y(o);
+e=(T.std_init_FWA(r))./sqrt(T.GroupCount(r)); e=e(o); e(isnan(e))=0;
+hS=errorbar(x,y,e,'-s','LineWidth',1,'Color',tcol(1,:), ...
+    'MarkerFaceColor',tcol(1,:),'MarkerSize',4);
+ylabel('FWA subscribers served (high demand)'); set(gca,'YColor',tcol(1,:));
 xlabel('Number of NCRs, $N_{\mathrm{rep}}$','Interpreter','latex');
-ylabel('Bandwidth freed for FWA (MHz)');
-legend(L,'Location','northeast'); styleIEEE(fig); saveIEEE(fig,plotDir,'Band_FWA_vs_num_NCR');
-
-%% Fig 2: FWA subscribers served vs #NCRs, one curve per demand tier
-fig=figure; hold on; grid on;
-for ti=1:numel(tiers)
-    rows = T.take_rate==takeRef & T.activity==actRef & strcmp(T.demand_profile,tiers{ti});
-    [x,o]=sort(T.num_rep(rows)); y=T.mean_init_FWA(rows); y=y(o);
-    e=T.std_init_FWA(rows); e=e(o); e(isnan(e))=0;
-    errorbar(x,y,e,tierMark{ti},'LineWidth',1);
-end
-xlabel('Number of NCRs, $N_{\mathrm{rep}}$','Interpreter','latex');
-ylabel('FWA subscribers served');
-legend(tierLbl,'Location','southeast'); styleIEEE(fig); saveIEEE(fig,plotDir,'K_FWA_vs_num_NCR');
-
-%% Fig 3: FWA subscribers served vs busy-hour activity, one curve per tier
-fig=figure; hold on; grid on;
-for ti=1:numel(tiers)
-    rows = T.take_rate==takeRef & T.num_rep==repRef & strcmp(T.demand_profile,tiers{ti});
-    [x,o]=sort(T.activity(rows)); y=T.mean_init_FWA(rows); y=y(o);
-    e=T.std_init_FWA(rows); e=e(o); e(isnan(e))=0;
-    errorbar(100*x,y,e,tierMark{ti},'LineWidth',1);
-end
-xlabel('Busy-hour device activity (\%)','Interpreter','latex');
-ylabel('FWA subscribers served');
-legend(tierLbl,'Location','southwest'); styleIEEE(fig); saveIEEE(fig,plotDir,'K_FWA_vs_activity');
+legend([hB;hS],{'Bandwidth freed','Subscribers served'},'Location','east','FontSize',7);
+styleIEEE(fig); saveIEEE(fig,plotDir,'Band_and_K_vs_num_NCR');
 
 %% Fig 4: packing safe-load fraction vs outage target (tier-invariant), 5% activity
 packingFile = fullfile(packDir,'packing_f_curves.csv');
@@ -86,13 +74,15 @@ if isfile(packingFile)
     if ismember('activity', P.Properties.VariableNames)
         uap=unique(P.activity); [~,iap]=min(abs(uap-0.05)); P=P(P.activity==uap(iap),:);
     end
-    fig=figure; hold on; grid on; L={};
-    plot(100*P.eps,P.f_FWA,'-o','LineWidth',1,'MarkerIndices',1:3:height(P)); L{end+1}='FWA CPE (link known at install)';
+    P = P(100*P.eps <= 10,:);   %truncate the outage axis to 1-10%
+    fig=figure('Visible','off'); hold on; grid on; L={};
+    plot(100*P.eps,P.f_FWA,'-o','LineWidth',1,'MarkerIndices',1:height(P)); L{end+1}='FWA CPE';
     if any(~isnan(P.f_cell_rep))
-        plot(100*P.eps,P.f_cell_rep,'-s','LineWidth',1,'MarkerIndices',1:3:height(P)); L{end+1}='Cellular UE';
+        plot(100*P.eps,P.f_cell_rep,'-s','LineWidth',1,'MarkerIndices',1:height(P)); L{end+1}='Cellular UE';
     end
     xlabel('Planning outage target, $\epsilon$ (\%)','Interpreter','latex');
-    ylabel('Safe load fraction, $f(\epsilon)$','Interpreter','latex');
+    ylabel('Fraction of spectrum utilized, $f(\epsilon)$','Interpreter','latex');
+    xlim([1 10]); xticks(1:1:10);
     legend(L,'Location','east'); styleIEEE(fig); saveIEEE(fig,plotDir,'packing_analysis');
 else
     fprintf('%s not found - run combineData first\n', packingFile);
@@ -106,6 +96,7 @@ set(findall(fig,'Type','legend'),'FontName','Times New Roman','FontSize',7);
 end
 function saveIEEE(fig, plotDir, name)
 if ~isfolder(plotDir), mkdir(plotDir), end
+drawnow;
 savefig(fig, fullfile(plotDir,[name '.fig']));
 saveas(fig, fullfile(plotDir,[name '.png']));
 saveas(fig, fullfile(plotDir,[name '.eps']), 'epsc');

@@ -51,7 +51,23 @@ if isempty(constDirs)
     fprintf('no FWA_const_* result folders found under %s\n', fullfile(repoRoot,'resultData'));
 end
 
-%% 2) Reduce the packing matrices to safe-load-fraction curves
+%% 2) Reduce the packing matrices to spectrum-utilization curves
+%MEAN-vs-PERCENTILE RATE AND SPECTRUM UTILIZATION. A user's delivered
+%rate r fluctuates over the variability (fading, mobility). Let
+%  r_bar   = E[r]        (mean deliverable rate), and
+%  q_eps(r)              (the eps-quantile: rate exceeded w.p. 1 - eps).
+%To guarantee a committed rate at outage eps the operator must plan for
+%the WORST CASE, i.e. size the spectrum so the commitment is met even at
+%q_eps(r). The link delivers r_bar on average, so the fraction of that
+%provisioned capacity actually committed (monetized) is
+%  f(eps) = q_eps(r) / r_bar   in (0, 1],
+%with f -> 1 only as the rate variance -> 0. Equivalently, to deliver a
+%target rate R per user the operator provisions B(eps) = R/q_eps(SE),
+%versus R/mean(SE) if rates were constant, so 1/f(eps) is the spectrum
+%over-provisioning factor and (1 - f(eps)) is the idle-spectrum margin.
+%f(eps) is thus the fraction of spectrum utilized under outage-eps
+%planning; f_FWA/f_cell is FWA's spectrum-utilization (revenue-per-Hz)
+%multiple. Below, per user we sum q_eps over users / sum r_bar over users.
 %Planning conventions (the asymmetry IS the point of the metric):
 %cellular provisions for a RANDOM population of mobile users, so rates
 %pool across drops (seeds), mobility snapshots, and fading realizations
