@@ -603,103 +603,162 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     siteLocations = siteLocations*Rm; CPE_locations = CPE_locations*Rm;
     UE_locations = UE_locations*Rm;   opC = opC*exp(1i*thR);
 
-    %% --- 3D deployment diagram: buildings, masts, vegetation ---
-    rng(7); %visual-only randomness (tree placement, unmodeled heights)
+    %% --- deployment scene: oblique 2.5D icon map (Apache-2.0 MDI icons) ---
+    %Replaces the extruded-box scene with recolored open-license icons
+    %(diagrams/icons; see README.txt) drawn as upright billboards on an
+    %obliquely projected ground plane (sx = x + kx*y, sy = ky*y). Object
+    %glyphs: gNB tower, zoned buildings (apartment/home/mall/office) each
+    %carrying a rooftop CPE dish, trees, merged pedestrian/indoor UEs (same
+    %low-mobility profile) and in-car UEs. Painter's algorithm by depth.
+    rng(7); %visual-only randomness (tree placement, building heights)
+    scriptDir = fileparts(mfilename('fullpath'));
+    plotDir = fullfile(scriptDir,'..','plots'); if ~isfolder(plotDir), mkdir(plotDir); end
+    ICO = loadIcons(fullfile(scriptDir,'icons'));
+    kx = 0.34; ky = 0.52;
+    prj = @(x,y) deal(x + kx*y, ky*y);
     set(0,'DefaultFigureVisible','off');
-    fig = figure('Position',[80 60 1100 620], 'Color','w','Visible','off');
-    hold on
-    %ground disc per site + vegetation annulus
-    th = linspace(0,2*pi,120);
-    for s = 1:M_sites
-        cx = siteLocations(s,1); cy = siteLocations(s,2);
-        patch(cx+params.deployRange*cos(th), cy+params.deployRange*sin(th), ...
-              zeros(size(th)), [0.93 0.92 0.88], 'EdgeColor','none');
+    fig = figure('Position',[80 60 1180 500],'Color','w','Visible','off');
+    axMap = axes('Position',[0.015 0.31 0.97 0.67]); hold(axMap,'on');
+    axis(axMap,'equal'); axis(axMap,'off'); axMap.YDir = 'normal';
+
+    Rveg = params.homeRadius + 160;   %vegetation-belt outer radius (display only, not to scale)
+    Dx = Rveg - 20; cR = [Dx 0]; cL = [-Dx 0]; dispC = [cR; cL]; %two cells meeting at the origin join
+    tth = linspace(0,2*pi,160);
+    projEll = @(cx,R) deal(cx + R*cos(tth) + kx*(R*sin(tth)), ky*(R*sin(tth)));
+    beige = [0.94 0.93 0.89];
+    %compact suburban cells (beige core to the belt edge) meeting at the centre
+    for s = 1:2
+        [ex,ey] = projEll(dispC(s,1),Rveg);
+        patch(axMap, ex, ey, beige,'EdgeColor','none');
     end
-    for s = 1:M_sites
-        cx = siteLocations(s,1); cy = siteLocations(s,2);
-        rv = [params.homeRadius params.deployRange];
-        xx = [cx+rv(1)*cos(th), cx+rv(2)*cos(fliplr(th))];
-        yy = [cy+rv(1)*sin(th), cy+rv(2)*sin(fliplr(th))];
-        patch(xx, yy, 0.5*ones(size(xx)), [0.72 0.85 0.66], 'EdgeColor','none','FaceAlpha',0.7);
+    %thin vegetation belt just outside the home ring
+    for s = 1:2
+        [ox,oy] = projEll(dispC(s,1),Rveg);
+        [ix,iy] = projEll(dispC(s,1),params.homeRadius);
+        patch(axMap,[ox fliplr(ix)],[oy fliplr(iy)],[0.74 0.86 0.68], ...
+              'EdgeColor','none','FaceAlpha',0.85);
     end
-    hVeg = patch(NaN, NaN, [0.72 0.85 0.66], 'EdgeColor','none'); %legend proxies
-    hApt = patch(NaN, NaN, [0.35 0.55 0.80], 'EdgeColor',[.35 .35 .35]);
-    hHom = patch(NaN, NaN, [0.85 0.80 0.62], 'EdgeColor',[.35 .35 .35]);
-    hMal = patch(NaN, NaN, [0.66 0.44 0.66], 'EdgeColor',[.35 .35 .35]);
-    hOff = patch(NaN, NaN, [0.90 0.55 0.30], 'EdgeColor',[.35 .35 .35]);
-    hCpe = patch(NaN, NaN, [0.05 0.15 0.5], 'EdgeColor','none');
-    hTre = patch(NaN, NaN, [0.23 0.49 0.25], 'EdgeColor','none');
-    hCar = patch(NaN, NaN, [0.75 0.10 0.15], 'EdgeColor','none');
-    %helper: extruded box
-    drawBox = @(x,y,w,h,c) patch( ...
-        'Vertices',[x-w/2 y-w/2 0; x+w/2 y-w/2 0; x+w/2 y+w/2 0; x-w/2 y+w/2 0; ...
-                    x-w/2 y-w/2 h; x+w/2 y-w/2 h; x+w/2 y+w/2 h; x-w/2 y+w/2 h], ...
-        'Faces',[1 2 6 5; 2 3 7 6; 3 4 8 7; 4 1 5 8; 5 6 7 8], ...
-        'FaceColor',c,'EdgeColor',[.35 .35 .35],'LineWidth',0.2,'FaceAlpha',1);
-    %buildings at CPE sites, heights per zone floor conventions (3 m/floor)
-    zc = params.cpe_zone;
+    %beige plaza at the join so the shared strip mall sits on the ground
+    [gx,gy] = projEll(0,150); patch(axMap, gx, gy, beige,'EdgeColor','none');
+    %zone outlines per cell
+    for s = 1:2
+        cx = dispC(s,1);
+        [a1,b1]=projEll(cx,params.aptRadius);   plot(axMap,a1,b1,'-','Color',[.55 .55 .55],'LineWidth',0.6);
+        [a2,b2]=projEll(cx,params.homeRadius);  plot(axMap,a2,b2,'--','Color',[.55 .55 .55],'LineWidth',0.6);
+    end
+
+    %assemble drawables: world ground (x,y), icon key, world height, rooftop-CPE flag
+    zc = params.cpe_zone; zoneKey = {'apt','home','mall','office'};
+    D = struct('x',{},'y',{},'key',{},'H',{},'roof',{});
+    siteC = siteLocations(:,1) + 1i*siteLocations(:,2); Rclear = 60; %clear plaza kept around each mast
+    homeCtr = 0;
     for k2 = 1:size(CPE_locations,1)
-        x = CPE_locations(k2,1); y = CPE_locations(k2,2);
+        if zc(k2)==2, homeCtr = homeCtr+1; if mod(homeCtr,3)==0, continue; end, end %thin dense homes (display)
         switch zc(k2)
-            case 1, fl = randi([2 4]);  w = 28; col = [0.35 0.55 0.80]; %apartment block
-            case 2, fl = randi([1 2]);  w = 12; col = [0.85 0.80 0.62]; %single-family home
-            case 3, fl = 1;             w = 30; col = [0.66 0.44 0.66]; %mall unit
-            case 4, fl = randi([2 3]);  w = 24; col = [0.90 0.55 0.30]; %office building
+            case 1, H = 95 + 12*randi([2 4]);
+            case 2, H = 55 + 12*randi([1 2]);
+            case 3, H = 62;
+            case 4, H = 70 + 11*randi([2 3]);
         end
-        drawBox(x, y, w, 3*fl, col);
-        %rooftop CPE: small dark cap on the roof instead of a floating marker
-        patch('Vertices',[x-3 y-3 3*fl+0.5; x+3 y-3 3*fl+0.5; x+3 y+3 3*fl+0.5; x-3 y+3 3*fl+0.5], ...
-              'Faces',[1 2 3 4],'FaceColor',[0.05 0.15 0.5],'EdgeColor','none');
+        p = CPE_locations(k2,1) + 1i*CPE_locations(k2,2); %push buildings out of the mast plaza
+        [~,ci] = min(abs(p - siteC));
+        if abs(p - siteC(ci)) < Rclear, p = siteC(ci) + Rclear*exp(1i*angle(p - siteC(ci))); end
+        %rooftop CPE dish shown on a representative ~1/3 of buildings (thinned)
+        D(end+1) = struct('x',real(p),'y',imag(p), ...
+                          'key',zoneKey{zc(k2)},'H',H,'roof',mod(k2,3)==0); %#ok<AGROW>
     end
-    %vegetation: tree glyphs (cone canopies) in the buffer annulus
+    %trees: fewer, confined to the thin vegetation belt
     for s = 1:M_sites
-        cx = siteLocations(s,1); cy = siteLocations(s,2);
-        nT = 130;
-        rr = sqrt(params.homeRadius^2 + (params.deployRange^2-params.homeRadius^2)*rand(nT,1));
+        cx = siteLocations(s,1); cy = siteLocations(s,2); nT = 18;
+        rr = sqrt(params.homeRadius^2 + (Rveg^2-params.homeRadius^2)*rand(nT,1));
         aa = 2*pi*rand(nT,1);
-        for k2 = 1:nT
-            tx = cx+rr(k2)*cos(aa(k2)); ty = cy+rr(k2)*sin(aa(k2));
-            hT = 8 + 6*rand;
-            [cxx,cyy,czz] = cylinder([6 0],8);
-            surf(tx+cxx, ty+cyy, hT*0.45 + czz*hT*0.75, 'FaceColor',[0.23 0.49 0.25],'EdgeColor','none');
+        for t = 1:nT
+            D(end+1) = struct('x',cx+rr(t)*cos(aa(t)),'y',cy+rr(t)*sin(aa(t)), ...
+                              'key','tree','H',55+14*rand,'roof',false); %#ok<AGROW>
         end
     end
-    %gNB masts (35 m) with panel heads
-    for s = 1:M_sites
-        cx = siteLocations(s,1); cy = siteLocations(s,2);
-        [mx,my,mz] = cylinder(4,10);
-        surf(cx+mx, cy+my, mz*params.ht_bs, 'FaceColor',[0.25 0.25 0.28],'EdgeColor','none');
-        drawBox(cx, cy, 22, 4, [0.15 0.15 0.18]); %equipment shelter footprint
-        hGnb = plot3(cx, cy, params.ht_bs+3, '^', 'MarkerSize',6, 'Color','k', 'MarkerFaceColor','k');
+    fast = v_move_ue > 5; lowmob = ~fast; %pedestrian + indoor: one low-mobility class
+    for k2 = find(lowmob)'
+        D(end+1) = struct('x',UE_locations(k2,1),'y',UE_locations(k2,2), ...
+                          'key','person','H',46,'roof',false); %#ok<AGROW>
     end
-    %active UEs: pedestrians/indoor (1.5 m markers), cars (small boxes)
-    fast = v_move_ue > 5; ped = ~fast & ~isIndoorUE; ind = ~fast & isIndoorUE;
-    hPed = plot3(UE_locations(ped,1), UE_locations(ped,2), 4*ones(sum(ped),1), 'o', 'Color',[0.15 0.4 0.08],'MarkerFaceColor',[0.35 0.68 0.2],'MarkerSize',3);
-    hInd = plot3(UE_locations(ind,1), UE_locations(ind,2), 4*ones(sum(ind),1), 'o', 'Color',[0.15 0.4 0.08],'MarkerSize',3);
-    carIdx = find(fast);
-    for k2 = carIdx'
-        drawBox(UE_locations(k2,1), UE_locations(k2,2), 10, 3.5, [0.75 0.10 0.15]);
+    scv = siteLocations(:,1) + 1i*siteLocations(:,2);
+    for k2 = find(fast)'
+        p = UE_locations(k2,1) + 1i*UE_locations(k2,2);
+        [~,ci] = min(abs(p - scv)); r = abs(p - scv(ci));
+        r = min(max(r,params.aptRadius), Rveg-25);   %keep cars within the belt (display only)
+        p = scv(ci) + r*exp(1i*angle(p - scv(ci)));
+        D(end+1) = struct('x',real(p),'y',imag(p),'key','car','H',36,'roof',false); %#ok<AGROW>
     end
-    %view, lighting, vertical exaggeration (heights x ~6 for visibility)
-    lg = legend([hGnb hApt hHom hMal hOff hCpe hPed hInd hCar hTre hVeg], ...
-        {'gNB site, 35 m mast (3 sectors)','Apartment block (2-4 floors)', ...
-         'Single-family home (1-2 floors)','Strip-mall unit','Office building (2-3 floors)', ...
-         'Rooftop FWA CPE','Active pedestrian UE (3 km/h)','Active indoor UE (3 km/h)', ...
-         'Active in-car UE (40 km/h)','Vegetation (dense clutter)','Vegetation buffer zone'}, ...
-        'Location','northwest','FontSize',8);
-    lg.Box = 'off';
-    axis off; grid off
-    daspect([1 1 0.16]); view(-14, 34);
-    mx = 1.04*max(abs([CPE_locations(:,1);UE_locations(:,1)]));
-    my = 1.10*max(abs([CPE_locations(:,2);UE_locations(:,2)]));
-    xlim([-mx mx]); ylim([-my my]);
-    camlight('headlight'); lighting gouraud; material dull
+    %% recompose as two mirrored copies of the RIGHT cell, meeting at the join
+    %(the shared mall stays at the origin; the left cell is the mirror image
+    %of the right cell, so both cells have an identical layout)
+    [~,rIdx] = max(siteLocations(:,1)); cReal = siteLocations(rIdx,:);
+    siteReal = siteLocations(:,1) + 1i*siteLocations(:,2);
+    rmax = Dx - 35;                                   %keep content off the central join
+    Dn = struct('x',{},'y',{},'key',{},'H',{},'roof',{});
+    for j = 1:numel(D)
+        d = D(j);
+        if strcmp(d.key,'tower'), continue; end
+        if strcmp(d.key,'mall'), Dn(end+1) = d; continue; end %#ok<AGROW> shared mall at the join
+        [~,ni] = min(abs((d.x + 1i*d.y) - siteReal));
+        if ni ~= rIdx, continue; end                 %keep only the right cell (left = its mirror)
+        rel = [d.x d.y] - cReal; rr = hypot(rel(1),rel(2));
+        if rr > rmax, rel = rel*(rmax/rr); end
+        dR = d; dR.x = cR(1)+rel(1); dR.y = cR(2)+rel(2); Dn(end+1) = dR; %#ok<AGROW>
+        dL = d; dL.x = cL(1)-rel(1); dL.y = cL(2)+rel(2); Dn(end+1) = dL; %#ok<AGROW> mirror across x=0
+    end
+    for s = 1:2
+        Dn(end+1) = struct('x',dispC(s,1),'y',dispC(s,2),'key','tower','H',165,'roof',false); %#ok<AGROW>
+    end
+    D = Dn;
+
+    [~,ord] = sort([D.y],'descend'); %far (large y) to near
+    isTwr = strcmp({D.key},'tower');
+    for j = ord
+        if isTwr(j), continue; end   %masts drawn last (below) so they are never occluded
+        d = D(j); [sx,sy] = prj(d.x,d.y);
+        drawIcon(axMap, ICO.(d.key), sx, sy, d.H);
+        %rooftop CPE dish lifted clear above the roofline (no overlap with the building)
+        if d.roof, drawIcon(axMap, ICO.cpe, sx, sy + d.H*1.04, 38); end
+    end
+    for j = find(isTwr)
+        d = D(j); [sx,sy] = prj(d.x,d.y);
+        drawIcon(axMap, ICO.(d.key), sx, sy, d.H);
+    end
+
+    [sxx,syy] = prj([D.x],[D.y]);
+    xlim(axMap,[min(sxx)-60 max(sxx)+60]);
+    ylim(axMap,[min(syy)-40 max(syy)+215]);
+
+    %% landscape legend spanning the full width (2 rows x 4 columns)
+    axL = axes('Position',[0.015 0.02 0.97 0.25]); hold(axL,'on');
+    axis(axL,[0 1 0 1]); axis(axL,'off'); axL.YDir = 'normal';
+    entries = {
+        'tower', 'gNB site (3 sectors, 35 m mast)';
+        'apt',   'Apartment block (2-4 floors)';
+        'home',  'Single-family home (1-2 floors)';
+        'mall',  'Strip-mall unit';
+        'office','Office building (2-3 floors)';
+        'cpe',   'Rooftop FWA CPE';
+        'person','Pedestrian / indoor UE (3 km/h)';
+        'car',   'In-car UE (40 km/h)'};
+    ncol = 4; cw = 1/ncol;
+    for e = 1:size(entries,1)
+        r = floor((e-1)/ncol); c = mod(e-1,ncol);
+        x0 = c*cw + 0.006; yc = 0.72 - r*0.5;
+        legendIcon(axL, ICO.(entries{e,1}), x0, yc, 0.34);
+        text(axL, x0+0.058, yc, entries{e,2},'FontName','Times New Roman', ...
+             'FontSize',8.5,'VerticalAlignment','middle','Interpreter','none');
+    end
+
     drawnow;
-    savefig(fig, 'plots/deployment_3d_5pct.fig');
-    exportgraphics(fig, 'plots/deployment_3d_5pct.png', 'Resolution', 240);
+    savefig(fig, fullfile(plotDir,'deployment_3d_5pct.fig'));
+    exportgraphics(fig, fullfile(plotDir,'deployment_3d_5pct.png'), 'Resolution', 260);
+    exportgraphics(fig, fullfile(plotDir,'deployment_3d_5pct.eps'));
     fprintf('3D diagram saved (%d buildings, %d active UEs)\n', size(CPE_locations,1), size(UE_locations,1));
     %also export the scene geometry for the Blender pipeline
-    fid = fopen('plots/deployment_scene.csv','w');
+    fid = fopen(fullfile(plotDir,'deployment_scene.csv'),'w');
     fprintf(fid,'type,x,y,height,width\n');
     for s = 1:M_sites, fprintf(fid,'gnb,%.1f,%.1f,%.1f,8\n', siteLocations(s,1), siteLocations(s,2), params.ht_bs); end
     for k2 = 1:size(CPE_locations,1)
@@ -714,3 +773,26 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     fclose(fid);
     end %idxActivity
     end %idxnumCPE
+
+%% ---------- icon helpers (Apache-2.0 Material Design Icons) ----------
+function ICO = loadIcons(d)
+    m = readtable(fullfile(d,'manifest.csv'),'TextType','string');
+    ICO = struct();
+    for i = 1:height(m)
+        k = char(m.key(i));
+        [im,~,al] = imread(fullfile(d,[k '.png']));
+        s.rgb = im; s.a = double(al)/255; s.asp = m.aspect(i);
+        ICO.(k) = s;
+    end
+end
+function drawIcon(ax, ico, sx, baseY, H)
+    W = H*ico.asp;
+    image('Parent',ax,'XData',[sx-W/2 sx+W/2],'YData',[baseY+H baseY], ...
+          'CData',ico.rgb,'AlphaData',ico.a);
+end
+function legendIcon(ax, ico, x0, yc, hy)
+    fig = ancestor(ax,'figure'); fp = get(fig,'Position'); ap = get(ax,'Position');
+    wx = hy * ico.asp * ((ap(4)*fp(4))/(ap(3)*fp(3))); %preserve aspect in normalized axes
+    image('Parent',ax,'XData',[x0 x0+wx],'YData',[yc+hy/2 yc-hy/2], ...
+          'CData',ico.rgb,'AlphaData',ico.a);
+end

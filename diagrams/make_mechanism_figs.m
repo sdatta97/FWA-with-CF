@@ -146,4 +146,5 @@ end
 function finishAxes(xl,yl)
     axis equal; axis off; xlim(xl); ylim(yl);
     set(gcf,'InvertHardcopy','off');
+    ax = gca; ax.Units = 'normalized'; ax.Position = [0 0 1 1]; ax.LooseInset = [0 0 0 0];
 end
