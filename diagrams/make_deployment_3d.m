@@ -4,7 +4,8 @@
 %%other operating points. Run from the repo root. Extracted from
 %%SimulationMain.m - regenerate the head section if the construction changes.
 close all;
-clear;
+clearvars -except sceneThin; %sceneThin: opt-in display thinning + no standalone
+                             %outputs, set by make_deployment_combined.m
 tStart = tic;
 aID = getenv('SLURM_ARRAY_TASK_ID');
 
@@ -697,19 +698,33 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     siteReal = siteLocations(:,1) + 1i*siteLocations(:,2);
     rmax = Dx - 35;                                   %keep content off the central join
     Dn = struct('x',{},'y',{},'key',{},'H',{},'roof',{});
+    %sceneThin (combined figure): sparser display - 2 apartment blocks per
+    %cell, half the homes, trees and cars - so the mechanism overlays read
+    thinMode = exist('sceneThin','var') && sceneThin;
+    cntApt = 0; cntHome = 0; cntTree = 0; cntCar = 0;
     for j = 1:numel(D)
         d = D(j);
         if strcmp(d.key,'tower'), continue; end
         if strcmp(d.key,'mall'), Dn(end+1) = d; continue; end %#ok<AGROW> shared mall at the join
         [~,ni] = min(abs((d.x + 1i*d.y) - siteReal));
         if ni ~= rIdx, continue; end                 %keep only the right cell (left = its mirror)
+        if thinMode
+            switch d.key
+                case 'apt',  cntApt = cntApt+1;   if cntApt > 2, continue; end
+                case 'home', cntHome = cntHome+1; if mod(cntHome,2)==0, continue; end
+                case 'tree', cntTree = cntTree+1; if mod(cntTree,2)==0, continue; end
+                case 'car',  cntCar = cntCar+1;   if mod(cntCar,2)==0, continue; end
+            end
+        end
         rel = [d.x d.y] - cReal; rr = hypot(rel(1),rel(2));
         if rr > rmax, rel = rel*(rmax/rr); end
         dR = d; dR.x = cR(1)+rel(1); dR.y = cR(2)+rel(2); Dn(end+1) = dR; %#ok<AGROW>
         dL = d; dL.x = cL(1)-rel(1); dL.y = cL(2)+rel(2); Dn(end+1) = dL; %#ok<AGROW> mirror across x=0
     end
+    twrH = 165 + 95*thinMode; %combined figure: taller gNB so the beam
+                              %lobes clear the apartment blocks
     for s = 1:2
-        Dn(end+1) = struct('x',dispC(s,1),'y',dispC(s,2),'key','tower','H',165,'roof',false); %#ok<AGROW>
+        Dn(end+1) = struct('x',dispC(s,1),'y',dispC(s,2),'key','tower','H',twrH,'roof',false); %#ok<AGROW>
     end
     D = Dn;
 
@@ -722,9 +737,11 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         %rooftop CPE dish lifted clear above the roofline (no overlap with the building)
         if d.roof, drawIcon(axMap, ICO.cpe, sx, sy + d.H*1.04, 38); end
     end
+    %combined figure: bigger-form lattice-tower gNB glyph instead of the mast
+    gKey = 'tower'; if thinMode && isfield(ICO,'gnb'), gKey = 'gnb'; end
     for j = find(isTwr)
         d = D(j); [sx,sy] = prj(d.x,d.y);
-        drawIcon(axMap, ICO.(d.key), sx, sy, d.H);
+        drawIcon(axMap, ICO.(gKey), sx, sy, d.H);
     end
 
     [sxx,syy] = prj([D.x],[D.y]);
@@ -735,7 +752,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     axL = axes('Position',[0.015 0.02 0.97 0.25]); hold(axL,'on');
     axis(axL,[0 1 0 1]); axis(axL,'off'); axL.YDir = 'normal';
     entries = {
-        'tower', 'gNB site (3 sectors, 35 m mast)';
+        'tower', 'gNB site (3 sectors, 35 m tower)';
         'apt',   'Apartment block (2-4 floors)';
         'home',  'Single-family home (1-2 floors)';
         'mall',  'Strip-mall unit';
@@ -743,15 +760,17 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         'cpe',   'Rooftop FWA CPE';
         'person','Pedestrian / indoor UE (3 km/h)';
         'car',   'In-car UE (40 km/h)'};
+    entries{1,1} = gKey; %combined mode: the lattice gNB glyph
     ncol = 4; cw = 1/ncol;
     for e = 1:size(entries,1)
         r = floor((e-1)/ncol); c = mod(e-1,ncol);
         x0 = c*cw + 0.006; yc = 0.72 - r*0.5;
         legendIcon(axL, ICO.(entries{e,1}), x0, yc, 0.34);
         text(axL, x0+0.058, yc, entries{e,2},'FontName','Times New Roman', ...
-             'FontSize',8.5,'VerticalAlignment','middle','Interpreter','none');
+             'FontSize',10.5,'VerticalAlignment','middle','Interpreter','none');
     end
 
+    if ~thinMode %combined-figure mode saves its own outputs instead
     drawnow;
     savefig(fig, fullfile(plotDir,'deployment_3d_5pct.fig'));
     exportgraphics(fig, fullfile(plotDir,'deployment_3d_5pct.png'), 'Resolution', 260);
@@ -771,6 +790,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     end
     fprintf(fid,'veg,%.1f,%.1f,%.1f,%.1f\n', 0, 0, params.homeRadius, params.deployRange);
     fclose(fid);
+    end %~thinMode
     end %idxActivity
     end %idxnumCPE
 

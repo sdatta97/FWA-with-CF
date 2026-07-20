@@ -12,6 +12,7 @@ Icons used (recolored to the figure palette, trimmed to content bbox):
   person   <- mdi 'walk'
   car      <- mdi 'car-side'
   tree     <- mdi 'pine-tree'
+  gnb      <- mdi 'transmission-tower'
 
 Apache-2.0 permits use/modification/redistribution incl. in publications;
 this note preserves attribution. See manifest.csv for the exact mapping.
