@@ -55,9 +55,12 @@ end
 [ux,uy] = prj(c.x,c.y); carPt = [ux, uy+22];
 %the NCR unit on the office rooftop (label on the open, outward side)
 patch(axMap, ox+[-14 14 14 -14], roofY+[0 0 11 11], colNcr, 'EdgeColor','none');
-plot(axMap, [ox ox], roofY+[11 22], '-', 'Color',colNcr, 'LineWidth',1.2);
-text(axMap, ox-22, roofY+16, 'NCR', 'Color',colNcr, 'FontName','Times New Roman', ...
-    'FontSize',11, 'FontWeight','bold', 'HorizontalAlignment','right');
+%mast carrying the label clear above the roof clutter: office-park
+%buildings overlap, so a neighbour's CPE dish can sit over this roof too,
+%and 12.5 pt text is ~40 world units tall at this scale
+plot(axMap, [ox ox], roofY+[11 74], '-', 'Color',colNcr, 'LineWidth',1.2);
+text(axMap, ox, roofY+95, 'NCR', 'Color',colNcr, 'FontName','Times New Roman', ...
+    'FontSize',12.5, 'FontWeight','bold', 'HorizontalAlignment','center');
 %weak direct beam: a faint grey lobe that dies before reaching the UE (x),
 %then the two relayed lobes gNB -> NCR -> UE
 wkFrac = 0.55;
