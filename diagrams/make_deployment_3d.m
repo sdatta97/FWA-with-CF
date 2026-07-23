@@ -4,8 +4,11 @@
 %%other operating points. Run from the repo root. Extracted from
 %%SimulationMain.m - regenerate the head section if the construction changes.
 close all;
-clearvars -except sceneThin; %sceneThin: opt-in display thinning + no standalone
-                             %outputs, set by make_deployment_combined.m
+clearvars -except sceneThin sceneCarSelector; %sceneThin: opt-in display
+                             %thinning + no standalone outputs;
+                             %sceneCarSelector: optional handle picking a
+                             %mechanism pair before cars are thinned.
+                             %Both set by make_deployment_combined.m
 tStart = tic;
 aID = getenv('SLURM_ARRAY_TASK_ID');
 
@@ -701,7 +704,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     %sceneThin (combined figure): sparser display - 2 apartment blocks per
     %cell, half the homes, trees and cars - so the mechanism overlays read
     thinMode = exist('sceneThin','var') && sceneThin;
-    cntApt = 0; cntHome = 0; cntTree = 0; cntCar = 0; cntPer = 0;
+    cntApt = 0; cntHome = 0; cntTree = 0; cntPer = 0; %cars thinned after the loop
     for j = 1:numel(D)
         d = D(j);
         if strcmp(d.key,'tower'), continue; end
@@ -713,7 +716,6 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
                 case 'apt',    cntApt = cntApt+1;   if cntApt > 2, continue; end
                 case 'home',   cntHome = cntHome+1; if mod(cntHome,3)~=1, continue; end
                 case 'tree',   cntTree = cntTree+1; if mod(cntTree,3)~=1, continue; end
-                case 'car',    cntCar = cntCar+1;   if mod(cntCar,3)~=1, continue; end
                 case 'person', cntPer = cntPer+1;   if mod(cntPer,3)~=1, continue; end
             end
         end
@@ -722,6 +724,25 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         dR = d; dR.x = cR(1)+rel(1); dR.y = cR(2)+rel(2); Dn(end+1) = dR; %#ok<AGROW>
         dL = d; dL.x = cL(1)-rel(1); dL.y = cL(2)+rel(2); Dn(end+1) = dL; %#ok<AGROW> mirror across x=0
     end
+    %Cars are thinned LAST: a mechanism selector (if supplied) first picks
+    %its relay pair from the FULL car set, and that car is then kept while
+    %the rest are thinned one in three. Selecting after thinning would let
+    %the best-placed UE be discarded before the mechanism ever sees it.
+    ncrHost = []; ncrUE = [];
+    if thinMode
+        if exist('sceneCarSelector','var') && ~isempty(sceneCarSelector)
+            [ncrHost, ncrUE] = sceneCarSelector(Dn, dispC);
+        end
+        keepXY = []; if ~isempty(ncrUE), keepXY = [ncrUE.x ncrUE.y]; end
+        drop = false(1,numel(Dn)); nCar = 0;
+        for k = find(strcmp({Dn.key},'car'))
+            if ~isempty(keepXY) && norm([Dn(k).x Dn(k).y] - keepXY) < 1e-9, continue; end
+            nCar = nCar + 1;
+            if mod(nCar,3) ~= 1, drop(k) = true; end
+        end
+        Dn(drop) = [];
+    end
+
     twrH = 165 + 95*thinMode; %combined figure: taller gNB so the beam
                               %lobes clear the apartment blocks
     for s = 1:2

@@ -17,6 +17,8 @@
 %positions left in the workspace.
 %Output: plots/deployment_combined.{png,eps,fig}.
 sceneThin = 1;
+sceneCarSelector = @pickRelayPair;  %picks the NCR host + assisted UE from the
+                                    %FULL car set, before cars are thinned
 run(fullfile(fileparts(mfilename('fullpath')),'make_deployment_3d.m'));
 %workspace now holds the scene: fig, axMap, D (drawables with display
 %positions/heights), prj/kx/ky (projection), dispC/Dx (cell centres), ICO,
@@ -37,24 +39,31 @@ topL = towerTop(D, dispC(2,1), prj);   %left-cell antenna head
 %NCR host: the outermost office-park building (per the model, NCRs are
 %CPE-hosted at the cell edge near the noise-limited road users); prefer
 %one drawn without a rooftop dish so the NCR unit stands alone.
-io = find(strcmp(keys,'office') & xs < 0 & ~roofs);
-if isempty(io), io = find(strcmp(keys,'office') & xs < 0); end
-[~,ii] = max(abs(xs(io))); o = D(io(ii));
+%pickRelayPair (below) already chose the NCR host and its assisted UE from
+%the full car set while the scene was being built; that UE was kept when
+%the remaining cars were thinned.
+o = ncrHost; c = ncrUE;
+if isempty(o)  %fallback: outermost office and the nearest car clear of it
+    io = find(strcmp(keys,'office') & xs < 0 & ~roofs);
+    if isempty(io), io = find(strcmp(keys,'office') & xs < 0); end
+    [~,ii] = max(abs(xs(io))); o = D(io(ii));
+    ic = find(strcmp(keys,'car') & xs < 0);
+    dw = hypot(xs(ic)-o.x, [D(ic).y]-o.y); dw(dw < 90) = inf;
+    [~,ii] = min(dw); c = D(ic(ii));
+end
 [ox,oy] = prj(o.x,o.y); roofY = oy + o.H + 3;
-%assisted UE: an in-car user a readable distance from the NCR office
-ic = find(strcmp(keys,'car') & xs < 0);
-dw = hypot(xs(ic)-o.x, [D(ic).y]-o.y); dw(dw < 80) = inf; %not right under it
-[~,ii] = min(dw); c = D(ic(ii));
 [ux,uy] = prj(c.x,c.y); carPt = [ux, uy+22];
 %the NCR unit on the office rooftop (label on the open, outward side)
 patch(axMap, ox+[-14 14 14 -14], roofY+[0 0 11 11], colNcr, 'EdgeColor','none');
 plot(axMap, [ox ox], roofY+[11 22], '-', 'Color',colNcr, 'LineWidth',1.2);
 text(axMap, ox-22, roofY+16, 'NCR', 'Color',colNcr, 'FontName','Times New Roman', ...
     'FontSize',11, 'FontWeight','bold', 'HorizontalAlignment','right');
-%blocked direct path (grey dotted, x) and the relayed radiation lobes
-arcPath(axMap, topL, carPt, 150, colBlk, 1.3, ':');
-bmid = bezPoint(topL, carPt, 150, 0.5);
-plot(axMap, bmid(1), bmid(2), 'x', 'Color',colBlk, 'MarkerSize',13, 'LineWidth',2.4);
+%weak direct beam: a faint grey lobe that dies before reaching the UE (x),
+%then the two relayed lobes gNB -> NCR -> UE
+wkFrac = 0.55;
+beamLobe(axMap, topL, carPt, wkFrac, colBlk, 70, 0.13);
+wkTip = topL + wkFrac*(carPt - topL);
+plot(axMap, wkTip(1), wkTip(2), 'x', 'Color',colBlk, 'MarkerSize',13, 'LineWidth',2.4);
 beamLobe(axMap, topL, [ox, roofY+16], 1.0, colRelay, 80);
 beamLobe(axMap, [ox, roofY+16], carPt, 1.0, colRelay, 60);
 
@@ -82,15 +91,14 @@ arcPath(axMap, topL + 0.20*dIL*dirIL, nulStop, 130, colIntf, 1.7, '--');
 nulX = nulStop + 0.4*(dishPt - nulStop);
 plot(axMap, nulX(1), nulX(2), 'x', 'Color',colIntf, 'MarkerSize',13, 'LineWidth',2.4);
 
-%% --- path legends in the sky corners ---
+%% --- path legend: a single row across the top of the scene ---
 xL = xlim(axMap); yL = ylim(axMap); rx = diff(xL); ry = diff(yL);
-segL = 0.040*rx; dy = 0.085*ry;
-lx = xL(1) + 0.012*rx; ly = yL(2) - 0.055*ry;      %top-left: NCR mechanism
-miniLine(axMap, lx, ly,    segL, ':', colBlk, 1.3, 'weak direct path');
-miniLobe(axMap, lx, ly-dy, segL, colRelay, 'NCR-relayed beam');
-lx = xL(2) - 0.255*rx; ly = yL(2) - 0.055*ry;      %top-right: nulling mechanism
-miniLobe(axMap, lx, ly,    segL, colBeam, 'desired FWA beam');
-miniLobe(axMap, lx, ly-dy, segL, colIntf, 'interference (nulled)');
+segL = 0.026*rx; ly = yL(2) - 0.050*ry;
+lg = {colBlk,  'weak direct beam'; colRelay,'NCR-relayed beam'; ...
+      colBeam, 'desired FWA beam'; colIntf, 'interference (nulled)'};
+for e = 1:size(lg,1)
+    miniLobe(axMap, xL(1) + (0.015 + 0.245*(e-1))*rx, ly, segL, lg{e,1}, lg{e,2});
+end
 
 drawnow;
 savefig(fig, fullfile(plotDir,'deployment_combined.fig'));
@@ -99,6 +107,35 @@ exportgraphics(fig, fullfile(plotDir,'deployment_combined.eps'));
 fprintf('combined system-model figure saved to %s\n', fullfile(plotDir,'deployment_combined.png'));
 
 %% ---------- local helpers ----------
+function [o, c] = pickRelayPair(D, dispC)
+    %Choose the NCR host office and the assisted in-car UE as a PAIR, from
+    %the FULL car set, so the relay forms a clean triangle: the UE sits out
+    %toward the cell edge, and the NCR office lies between it and the gNB
+    %but offset sideways far enough that the two relay lobes overlap
+    %neither each other nor the direct beam. The ground projection is
+    %affine, so betweenness and lateral offset carry over to the drawing.
+    keys = {D.key}; xs = [D.x];
+    gPos = dispC(2,:);                            %left-cell gNB
+    io = find(strcmp(keys,'office') & xs < 0);
+    ic = find(strcmp(keys,'car')    & xs < 0);
+    best = -inf; o = []; c = [];
+    for ki = io
+        op = [D(ki).x D(ki).y];
+        for kj = ic
+            cp = [D(kj).x D(kj).y];
+            dgc = norm(cp - gPos);
+            if dgc < 320, continue; end           %UE out toward the cell edge
+            u = (cp - gPos)/dgc; t = dot(op - gPos, u);
+            if t < 100 || t > dgc - 80, continue; end   %NCR between gNB and UE
+            off = norm((op - gPos) - t*u);        %lateral offset from the direct beam
+            if off < 60 || off > 230, continue; end
+            v1 = (op - gPos)/norm(op - gPos); v2 = (cp - op)/norm(cp - op);
+            if dot(v1,v2) < 0.25, continue; end   %no hairpin turn at the NCR
+            score = dgc + 1.6*off - 200*D(ki).roof; %far UE, clear detour, bare roof
+            if score > best, best = score; o = D(ki); c = D(kj); end
+        end
+    end
+end
 function t = towerTop(D, cx, prj)
     %display point of the antenna head of the tower nearest world x = cx
     it = find(strcmp({D.key},'tower'));
@@ -106,19 +143,15 @@ function t = towerTop(D, cx, prj)
     [sx,sy] = prj(d.x,d.y);
     t = [sx, sy + 0.88*d.H];
 end
-function beamLobe(ax, S, T, frac, c, p)
+function beamLobe(ax, S, T, frac, c, p, alpha)
     %directional radiation lobe from S toward T: petal r = L*cos-shaped
     %pattern of sharpness p, spanning frac of the link length
+    if nargin < 7, alpha = 0.26; end
     L = frac*norm(T - S); th0 = atan2(T(2)-S(2), T(1)-S(1));
     th = linspace(-pi, pi, 240);
     r = L*(0.5*(1+cos(th))).^p;
     patch(ax, S(1)+r.*cos(th+th0), S(2)+r.*sin(th+th0), c, ...
-          'EdgeColor',c, 'FaceAlpha',0.26, 'LineWidth',1.5);
-end
-function p = bezPoint(p0, p2, lift, t)
-    %point at parameter t on the quadratic arc used by arcPath
-    ctrl = (p0 + p2)/2 + [0 lift];
-    p = (1-t)^2*p0 + 2*(1-t)*t*ctrl + t^2*p2;
+          'EdgeColor',c, 'FaceAlpha',alpha, 'LineWidth',1.5);
 end
 function arcPath(ax, p0, p2, lift, c, lw, ls)
     %quadratic bezier arc p0 -> p2 (control point lifted above the chord)
@@ -127,17 +160,12 @@ function arcPath(ax, p0, p2, lift, c, lw, ls)
     b = (1-t).^2.*p0 + 2*(1-t).*t.*ctrl + t.^2.*p2;
     plot(ax, b(:,1), b(:,2), ls, 'Color',c, 'LineWidth',lw);
 end
-function miniLine(ax, x0, yc, segL, ls, c, lw, txt)
-    plot(ax, [x0 x0+segL], [yc yc], ls, 'Color',c, 'LineWidth',lw);
-    text(ax, x0+segL+0.012*diff(xlim(ax)), yc, txt, 'FontName','Times New Roman', ...
-        'FontSize',10, 'VerticalAlignment','middle', 'Color',[0.15 0.15 0.15]);
-end
 function miniLobe(ax, x0, yc, segL, c, txt)
-    %small horizontal petal glyph + text
+    %small horizontal petal glyph + text (font matched to the icon legend)
     th = linspace(-pi, pi, 120);
     r = 1.15*segL*(0.5*(1+cos(th))).^6;
     patch(ax, x0+r.*cos(th), yc+0.5*r.*sin(th), c, 'EdgeColor',c, ...
           'FaceAlpha',0.3, 'LineWidth',1.1);
-    text(ax, x0+1.15*segL+0.012*diff(xlim(ax)), yc, txt, 'FontName','Times New Roman', ...
-        'FontSize',10, 'VerticalAlignment','middle', 'Color',[0.15 0.15 0.15]);
+    text(ax, x0+1.15*segL+0.010*diff(xlim(ax)), yc, txt, 'FontName','Times New Roman', ...
+        'FontSize',12.5, 'VerticalAlignment','middle', 'Color',[0.15 0.15 0.15]);
 end
