@@ -62,7 +62,7 @@ r = T.take_rate==takeRef & T.activity==actRef & strcmp(T.demand_profile,'high');
 e=(T.std_init_FWA(r))./sqrt(T.GroupCount(r)); e=e(o); e(isnan(e))=0;
 hS=errorbar(x,y,e,'-s','LineWidth',1,'Color',tcol(1,:), ...
     'MarkerFaceColor',tcol(1,:),'MarkerSize',4);
-ylabel('FWA subscribers served (high demand)'); set(gca,'YColor',tcol(1,:));
+ylabel('FWA subscribers served'); set(gca,'YColor',tcol(1,:));
 xlabel('Number of NCRs, $N_{\mathrm{rep}}$','Interpreter','latex');
 legend([hB;hS],{'Bandwidth freed','Subscribers served'},'Location','east','FontSize',7);
 styleIEEE(fig); saveIEEE(fig,plotDir,'Band_and_K_vs_num_NCR');
@@ -76,9 +76,9 @@ if isfile(packingFile)
     end
     P = P(100*P.eps <= 10,:);   %truncate the outage axis to 1-10%
     fig=figure('Visible','off'); hold on; grid on; L={};
-    plot(100*P.eps,P.f_FWA,'-o','LineWidth',1,'MarkerIndices',1:height(P)); L{end+1}='FWA CPE';
+    plot(100*P.eps,P.f_FWA,'-o','LineWidth',1,'MarkerIndices',1:height(P)); L{end+1}='Fixed Wireless Access';
     if any(~isnan(P.f_cell_rep))
-        plot(100*P.eps,P.f_cell_rep,'-s','LineWidth',1,'MarkerIndices',1:height(P)); L{end+1}='Cellular UE';
+        plot(100*P.eps,P.f_cell_rep,'-s','LineWidth',1,'MarkerIndices',1:height(P)); L{end+1}='Mobile Cellular';
     end
     xlabel('Planning outage target, $\epsilon$ (\%)','Interpreter','latex');
     ylabel('Fraction of spectrum utilized, $f(\epsilon)$','Interpreter','latex');

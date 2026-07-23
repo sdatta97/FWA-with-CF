@@ -701,7 +701,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     %sceneThin (combined figure): sparser display - 2 apartment blocks per
     %cell, half the homes, trees and cars - so the mechanism overlays read
     thinMode = exist('sceneThin','var') && sceneThin;
-    cntApt = 0; cntHome = 0; cntTree = 0; cntCar = 0;
+    cntApt = 0; cntHome = 0; cntTree = 0; cntCar = 0; cntPer = 0;
     for j = 1:numel(D)
         d = D(j);
         if strcmp(d.key,'tower'), continue; end
@@ -709,11 +709,12 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         [~,ni] = min(abs((d.x + 1i*d.y) - siteReal));
         if ni ~= rIdx, continue; end                 %keep only the right cell (left = its mirror)
         if thinMode
-            switch d.key
-                case 'apt',  cntApt = cntApt+1;   if cntApt > 2, continue; end
-                case 'home', cntHome = cntHome+1; if mod(cntHome,2)==0, continue; end
-                case 'tree', cntTree = cntTree+1; if mod(cntTree,2)==0, continue; end
-                case 'car',  cntCar = cntCar+1;   if mod(cntCar,2)==0, continue; end
+            switch d.key %keep one in three of the crowd classes
+                case 'apt',    cntApt = cntApt+1;   if cntApt > 2, continue; end
+                case 'home',   cntHome = cntHome+1; if mod(cntHome,3)~=1, continue; end
+                case 'tree',   cntTree = cntTree+1; if mod(cntTree,3)~=1, continue; end
+                case 'car',    cntCar = cntCar+1;   if mod(cntCar,3)~=1, continue; end
+                case 'person', cntPer = cntPer+1;   if mod(cntPer,3)~=1, continue; end
             end
         end
         rel = [d.x d.y] - cReal; rr = hypot(rel(1),rel(2));
@@ -765,9 +766,9 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     for e = 1:size(entries,1)
         r = floor((e-1)/ncol); c = mod(e-1,ncol);
         x0 = c*cw + 0.006; yc = 0.72 - r*0.5;
-        legendIcon(axL, ICO.(entries{e,1}), x0, yc, 0.34);
-        text(axL, x0+0.058, yc, entries{e,2},'FontName','Times New Roman', ...
-             'FontSize',10.5,'VerticalAlignment','middle','Interpreter','none');
+        wx = legendIcon(axL, ICO.(entries{e,1}), x0, yc, 0.34);
+        text(axL, x0+wx+0.008, yc, entries{e,2},'FontName','Times New Roman', ...
+             'FontSize',12.5,'VerticalAlignment','middle','Interpreter','none');
     end
 
     if ~thinMode %combined-figure mode saves its own outputs instead
@@ -810,7 +811,8 @@ function drawIcon(ax, ico, sx, baseY, H)
     image('Parent',ax,'XData',[sx-W/2 sx+W/2],'YData',[baseY+H baseY], ...
           'CData',ico.rgb,'AlphaData',ico.a);
 end
-function legendIcon(ax, ico, x0, yc, hy)
+function wx = legendIcon(ax, ico, x0, yc, hy)
+    %returns the drawn (normalized) width so labels can clear wide icons
     fig = ancestor(ax,'figure'); fp = get(fig,'Position'); ap = get(ax,'Position');
     wx = hy * ico.asp * ((ap(4)*fp(4))/(ap(3)*fp(3))); %preserve aspect in normalized axes
     image('Parent',ax,'XData',[x0 x0+wx],'YData',[yc+hy/2 yc-hy/2], ...
