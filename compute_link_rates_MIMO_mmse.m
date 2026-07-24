@@ -90,6 +90,14 @@ MSI_FWA = zeros(K_FWA,N_CPE_FWA);
 MUI_FWA = zeros(K_FWA,N_CPE_FWA);
 HI_FWA = zeros(K_FWA,N_CPE_FWA);
 noise_FWA = abs(sqrt(0.5)*(randn(K_FWA,N_CPE_FWA) + 1j*randn(K_FWA,N_CPE_FWA))).^2;
+%site of each CPE's serving sector (sectors are numbered site-major:
+%params.locationsBS = kron(siteLocations, ones(S,1)))
+siteAware = ~isfield(params,'gI_site_aware') || params.gI_site_aware; %0 = legacy blanket gamma_I (ablation)
+S_site = params.sectors_per_site;
+servSite = zeros(K_FWA,1);
+for k = 1:K_FWA
+    servSite(k) = ceil(Serv{k}(1)/S_site);
+end
 snr_num_FWA = zeros(K_FWA,N_CPE_FWA);
 snr_den_FWA = zeros(K_FWA,N_CPE_FWA);
 rate_dl = zeros(K_FWA,1);
@@ -105,8 +113,16 @@ for k = 1:K_FWA
         end
         for q = 1:K_FWA
             if (q~=k)
-                MUI_FWA(k,n) = MUI_FWA(k,n) + Kr_FWA*Kt*SI_cancel_factor*norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
-                HI_FWA(k,n)  = HI_FWA(k,n)  + (1-Kr_FWA*Kt)*SI_cancel_factor*norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
+                %gamma_I models the CPE's DIRECTIONAL receive null and so
+                %applies only to OTHER-SITE interferers: same-sector
+                %streams are already suppressed by the L-MMSE precoder
+                %(D_FWA_FWA carries the residual leakage), and co-site
+                %other-sector interference arrives from the serving mast's
+                %direction, inside the CPE's main receive lobe - neither
+                %can be nulled again at the CPE
+                if siteAware && servSite(q) == servSite(k), fac = 1; else, fac = SI_cancel_factor; end
+                MUI_FWA(k,n) = MUI_FWA(k,n) + Kr_FWA*Kt*fac*norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
+                HI_FWA(k,n)  = HI_FWA(k,n)  + (1-Kr_FWA*Kt)*fac*norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
             end
         end
         snr_num_FWA(k,n) = DS_FWA(k,n);

@@ -255,13 +255,13 @@ params.rho_res_home = 1200; %residents per km^2, single-family belt
 params.activity_ref = 0.05; %REFERENCE busy-hour activity share: the per-zone
                          %gross-active densities below are the values observed
                          %at this share (townhouse ring = 2500 residents/km^2 x 5%)
-activity_arr = 0.10; %DEFAULT busy-hour device-activity share: the top of
-                         %the studied range, where cellular contention binds
-                         %and the NCR mechanisms are exercised (5% is the
-                         %ITU-R-anchored reference share; every zone's
+activity_arr = 0.05; %DEFAULT busy-hour device-activity share: the
+                         %ITU-R-anchored reference (~10 cellular actives per
+                         %TRxP, M.2412 evaluation convention; top of the
+                         %typical 3-5% suburban range). Every zone's
                          %gross-active density and the road density scale
                          %linearly with activity_arr/activity_ref; sweep
-                         %0.025:0.025:0.1 for sensitivity studies)
+                         %0.025:0.025:0.1 for sensitivity studies
 lambda_UE_apt_base = 125;  %GROSS active users per km^2 at activity_ref,
                            %townhouse ring (rho_res_ring x activity_ref)
 lambda_UE_home_base = 60;  %GROSS active users per km^2 at activity_ref, single-family belt
@@ -298,10 +298,20 @@ params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
 %ngFWA primer, https://resourcesapi.taranawireless.com/storage/resource_files/white-papers/1758649242_Tarana-ngFWA-Primer-White-Paper-2509-02.pdf)
 %and real-time adaptive arrays measure ~30-35 dB null depths, still
 %>20 dB with 3-6 simultaneous interferers (Sensors 2023,
-%https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10386719/). The -20 dB
-%value is conservative against both (a -20:5:0 sweep produced the legacy
-%suppression-factor SE-comparison figure; the factor is FIXED now)
-params.SI_cancel_dB = -20;
+%https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10386719/). Set to the
+%Tarana ngFWA figure (45 dB): gamma_I applies ONLY to OTHER-SITE
+%interferers (see compute_link_rates_MIMO_mmse.m) - same-sector streams
+%are suppressed by the L-MMSE precoder itself and co-site sectors arrive
+%from the serving mast's direction, so the deep null is spent entirely
+%on the one interferer class the CPE can actually steer against
+params.SI_cancel_dB = -45;
+params.gI_site_aware = 1; %1 = gamma_I nulls OTHER-SITE interferers only
+                          %(L-MMSE handles same-sector streams; co-site
+                          %sectors arrive from the serving direction);
+                          %0 = legacy blanket suppression (ablation).
+                          %REGISTERED as a naming constant so this
+                          %model generation never shares a result folder
+                          %with pre-site-aware campaigns
 params.HW_IMPAIRMENTS = 0;  % 1 = hardware impairments on, 0 = ideal hardware
                             %(recorded via the HWI naming-registry entry)
 %EVM-based impairment factors: an error vector magnitude of e turns a
@@ -420,11 +430,12 @@ params.dt_snap = 1;            %time between mobility snapshots (s)
 %take 100/200/500 across the profiles (HIGH = top tier + multi-tenant
 %margin). Townhouse CPEs serve ONE household each (no MDU aggregation),
 %so both residential zones share the per-home tiers.
-fwa_demand_names = {'high'}; %DEFAULT: the binding (revenue-relevant) tier -
-%lower tiers are served in full and add no information at the default
-%operating point. For tier sensitivity restore {'low','medium','high'} with
-%rows [50 50 100 100; 150 150 200 200] above the high row.
-fwa_demand_configs = 1e6*[300   300    500    500];  %HIGH demand profile
+fwa_demand_names = {'low'}; %DEFAULT: the LOW profile - the band-limited
+%tier where subscriber growth tracks the NCR-freed bandwidth ~1:1
+%(medium/high are SINR-limited and sublinear). For tier sensitivity
+%restore {'low','medium','high'} with rows [150 150 200 200;
+%300 300 500 500] below the low row.
+fwa_demand_configs = 1e6*[ 50    50    100    100];  %LOW demand profile
 %% AUTOMATED OUTPUT NAMING (see sweepNaming.m): every sweepable
 %parameter is registered here; axes with numel > 1 are detected as
 %swept and become CSV table columns, scalars become constants whose
@@ -434,12 +445,13 @@ fwa_demand_configs = 1e6*[300   300    500    500];  %HIGH demand profile
 %without running the simulation.
 sweepRegNames = {'take_rate','activity','num_rep','demand_profile', ...
     'rep_gain','SI_cancel','r_min_cell_Mbps','loss_pc','ISD_m','Band_MHz','HWI', ...
-    'rank','Krep','gate','contam'};
+    'rank','Krep','gate','contam','gIsite'};
 sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     fwa_demand_names, params.repeat_gain, params.SI_cancel_dB, ...
     params.r_min_cell/1e6, params.loss_pc_cell, params.ISD, Band/1e6, params.HW_IMPAIRMENTS, ...
     params.ncr_rank, ...
-    params.num_repeater_per_cpe, params.ncr_benefit_gate, params.fwa_pilot_contam};
+    params.num_repeater_per_cpe, params.ncr_benefit_gate, params.fwa_pilot_contam, ...
+    params.gI_site_aware};
 naming = sweepNaming(sweepRegNames, sweepRegVals, aID);
 %a rerun of the same seed starts its table fresh (rows accumulate across
 %the sweep loops within one run, never across runs)
@@ -887,6 +899,37 @@ end
                         writematrix(rate_dl, strcat(packFolder,'/packing_FWA_',num2str(numCPE_all),'CPE_',num2str(activity_arr(idxActivity)),'act_',num2str(params.num_repeater_tot),'rep_',aID,'.csv'));
                     end
                     Band_FWA = params.Band;
+                    %% FULL-BAND PER-TERMINAL SE COMPARISON (its own table):
+                    %the gross physical-layer contrast - ALL cellular UEs
+                    %thrown into the whole band vs ALL FWA CPEs thrown into
+                    %the whole band. No orthogonal split, no demand or
+                    %feasibility filtering, every terminal counted. The
+                    %cellular per-UE SE is band-invariant under the
+                    %constant-PSD convention, so the allocation-phase value
+                    %is reused; the FWA side is recomputed explicitly on the
+                    %full band (the num_rep = 0 fallow band can be zero,
+                    %leaving nothing to rescale). Extra RNG draws here are
+                    %safe: every num_rep iteration replays fadingState.
+                    if num_rep_arr(idxnumrep) == 0
+                        params_se = params; params_se.Band = Band;
+                        rate_fb = zeros(numCPE_tot, nbrFWADraws);
+                        for n = 1:nbrFWADraws
+                            [~, ~, ch_fwa, ch_est_fwa] = computePhysicalChannels_sub6_MIMO(params_se);
+                            rate_fb(:,n) = compute_link_rates_MIMO_mmse(params_se, ch_fwa, ch_est_fwa);
+                        end
+                        se_fwa_fb = sum(mean(rate_fb,2))/(Band*numCPE_tot);
+                        se_cell_fb = sum(mean_rate_dl_cell)/(Band - Band_FWA)/(M_sectors*numUE);
+                        seDir = fullfile('resultData','FWA_SE_comparison');
+                        if not(isfolder(seDir)), mkdir(seDir), end
+                        seFile = fullfile(seDir, strcat('se_comp_', ...
+                            num2str(take_rate_arr(idxnumCPE)), '_', ...
+                            num2str(activity_arr(idxActivity)), '_', aID, '.csv'));
+                        fid_se = fopen(seFile,'w');
+                        fprintf(fid_se, 'numCPE,numUE,se_cell_ue,se_fwa_cpe,multiple\n');
+                        fprintf(fid_se, '%d,%d,%f,%f,%f\n', numCPE_tot, M_sectors*numUE, ...
+                            se_cell_fb, se_fwa_fb, se_fwa_fb/se_cell_fb);
+                        fclose(fid_se);
+                    end
                     for idxrmin = 1:size(fwa_demand_configs,1)
                         %per-CPE absolute minimum rates for this config;
                         %the HOME rate labels the config in filenames/CSV
@@ -894,9 +937,15 @@ end
                         params.fwa_demand_profile = fwa_demand_names{idxrmin}; %tags filenames/CSV
                         params.Band = Band_FWA;
                         %a CPE is SERVED iff its delivered rate meets its
-                        %zone's advertised minimum for this demand config
-                        K_FWA_init = sum(mean_rate_dl_FWA(:) >= params.fwa_demand_rates(:));
-                        sum_FWA_rate = sum(mean_rate_dl_FWA);
+                        %zone's advertised minimum for this demand config;
+                        %the SE numerator sums the SERVED CPEs only, so
+                        %numerator and denominator describe the same
+                        %population (unserved residual rates would inflate
+                        %the per-served-CPE SE, badly so when Band_FWA is
+                        %small at num_rep = 0)
+                        servedFWA = mean_rate_dl_FWA(:) >= params.fwa_demand_rates(:);
+                        K_FWA_init = sum(servedFWA);
+                        sum_FWA_rate = sum(mean_rate_dl_FWA(servedFWA));
                         params.Band = Band;
                         if (Band_FWA > 0) && (K_FWA_init > 0)
                             FWA_se_out = sum_FWA_rate/(Band_FWA*K_FWA_init);
@@ -920,7 +969,7 @@ end
                             params.SI_cancel_dB, params.r_min_cell/1e6, ...
                             params.loss_pc_cell, params.ISD, Band/1e6, params.HW_IMPAIRMENTS, ...
                             params.ncr_rank, params.num_repeater_per_cpe, ...
-                            params.ncr_benefit_gate, params.fwa_pilot_contam};
+                            params.ncr_benefit_gate, params.fwa_pilot_contam, params.gI_site_aware};
                         fileID = fopen(resultFile,'a');
                         if writeHeader
                             fprintf(fileID, naming.header);

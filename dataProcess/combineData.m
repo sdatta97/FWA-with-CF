@@ -51,7 +51,29 @@ if isempty(constDirs)
     fprintf('no FWA_const_* result folders found under %s\n', fullfile(repoRoot,'resultData'));
 end
 
-%% 2) Reduce the packing matrices to spectrum-utilization curves
+%% 2) Tabulate the full-band per-terminal SE comparison across seeds
+%(the gross physical-layer contrast written by SimulationMain at
+%num_rep = 0: all UEs vs all CPEs, each on the whole band, no split, no
+%feasibility filtering)
+seDir = fullfile(repoRoot,'resultData','FWA_SE_comparison');
+seFiles = dir(fullfile(seDir,'se_comp_*.csv'));
+if ~isempty(seFiles)
+    seT = cell(numel(seFiles),1);
+    for f = 1:numel(seFiles)
+        seT{f} = readtable(fullfile(seDir,seFiles(f).name));
+    end
+    seAll = vertcat(seT{:});
+    m = seAll.multiple;
+    seSum = table(numel(m), mean(seAll.se_cell_ue), mean(seAll.se_fwa_cpe), ...
+        mean(m), median(m), std(m)/sqrt(numel(m)), ...
+        'VariableNames',{'n_seeds','mean_se_cell_ue','mean_se_fwa_cpe', ...
+                         'mean_multiple','median_multiple','se_multiple'});
+    writetable(seSum, fullfile(seDir,'se_comparison_summary.csv'));
+    fprintf('full-band SE comparison (%d seeds): cell %.2f vs FWA %.2f b/s/Hz per terminal -> %.1fx (median %.1fx)\n', ...
+        numel(m), seSum.mean_se_cell_ue, seSum.mean_se_fwa_cpe, seSum.mean_multiple, seSum.median_multiple);
+end
+
+%% 3) Reduce the packing matrices to spectrum-utilization curves
 %MEAN-vs-PERCENTILE RATE AND SPECTRUM UTILIZATION. A user's delivered
 %rate r fluctuates over the variability (fading, mobility). Let
 %  r_bar   = E[r]        (mean deliverable rate), and

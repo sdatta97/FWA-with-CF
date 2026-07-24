@@ -36,11 +36,11 @@ packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
 plotDir = fullfile(repoRoot,'plots');
 
 T = readtable(fullfile(sweepDir,'summary.csv'));
-%REFERENCE operating point = the model defaults (20%% take, 10%% activity,
+%REFERENCE operating point = the model defaults (20%% take, 5%% activity,
 %high tier - see SimulationMain.m). Any of these axes may be a CONSTANT of
 %the campaign (column absent from the summary); refMask filters only on
 %the columns that exist.
-actRef = 0.10;
+actRef = 0.05;
 if ismember('activity',T.Properties.VariableNames)
     ua = unique(T.activity); [~,ia]=min(abs(ua-actRef)); actRef=ua(ia);
 end
@@ -65,11 +65,11 @@ eb=(T.std_Band_FWA(rB)/1e6)./sqrt(T.GroupCount(rB)); eb=eb(ob); eb(isnan(eb))=0;
 hB=errorbar(xb,yb,eb,'-o','LineWidth',1.4,'Color','k','MarkerFaceColor','k','MarkerSize',4);
 ylabel('Bandwidth available for FWA use (MHz)'); set(gca,'YColor','k');
 yyaxis right
-%subscribers served at the binding (high) tier - the model default; lower
-%tiers, when present in a sensitivity campaign, are served in full (flat)
+%subscribers served at the LOW tier - the model default, where service is
+%band-limited and subscriber growth tracks the freed bandwidth ~1:1
 r = refMask;
 if ismember('demand_profile',T.Properties.VariableNames)
-    r = r & strcmp(T.demand_profile,'high');
+    r = r & strcmp(T.demand_profile,'low');
 end
 [x,o]=sort(T.num_rep(r)); y=T.mean_init_FWA(r); y=y(o);
 e=(T.std_init_FWA(r))./sqrt(T.GroupCount(r)); e=e(o); e(isnan(e))=0;

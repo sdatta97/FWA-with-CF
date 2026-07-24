@@ -278,7 +278,8 @@ params.loss_pc_cell = 5/100; %enforce r_min_cell at the 5th-percentile cell UE
 %https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10386719/). The -20 dB
 %value is conservative against both (a -20:5:0 sweep produced the legacy
 %suppression-factor SE-comparison figure; the factor is FIXED now)
-params.SI_cancel_dB = -20;
+params.SI_cancel_dB = -45; %site-aware gamma_I (see SimulationMain.m)
+params.gI_site_aware = 1;
 params.HW_IMPAIRMENTS = 0;  % 1 = hardware impairments on, 0 = ideal hardware
                             %(recorded via the HWI naming-registry entry)
 %EVM-based impairment factors: an error vector magnitude of e turns a
@@ -410,12 +411,13 @@ fwa_demand_configs = 1e6*[ 50    50    100    100;   %LOW demand profile
 %without running the simulation.
 sweepRegNames = {'take_rate','activity','num_rep','demand_profile', ...
     'rep_gain','SI_cancel','r_min_cell_Mbps','loss_pc','ISD_m','Band_MHz','HWI', ...
-    'rank','Krep','gate','contam'};
+    'rank','Krep','gate','contam','gIsite'};
 sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     fwa_demand_names, params.repeat_gain, params.SI_cancel_dB, ...
     params.r_min_cell/1e6, params.loss_pc_cell, params.ISD, Band/1e6, params.HW_IMPAIRMENTS, ...
     params.ncr_rank, ...
-    params.num_repeater_per_cpe, params.ncr_benefit_gate, params.fwa_pilot_contam};
+    params.num_repeater_per_cpe, params.ncr_benefit_gate, params.fwa_pilot_contam, ...
+    params.gI_site_aware};
 %% Simulation FR1 setup
     %% gNB locations: macro sites, each split into 3 co-located sector BSs
     params.M_sites = 2; %number of macro sites. The TWO-SITE side-by-side
