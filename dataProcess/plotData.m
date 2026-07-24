@@ -47,7 +47,7 @@ end
 refMask = true(height(T),1);
 if ismember('take_rate',T.Properties.VariableNames), refMask = refMask & T.take_rate==max(T.take_rate); end
 if ismember('activity',T.Properties.VariableNames),  refMask = refMask & T.activity==actRef; end
-tcol = [0 0.45 0.74; 0.85 0.33 0.10; 0.47 0.67 0.19];
+cSubs = [0 0.45 0.74]; %subscriber-series color
 
 %% Dual-axis figure at the fixed activity: bandwidth FREED BY the NCRs
 %(left, tier-invariant) and FWA subscribers served (right), vs the number
@@ -76,9 +76,9 @@ if ismember('demand_profile',T.Properties.VariableNames)
 end
 [x,o]=sort(T.num_rep(r)); y=T.mean_init_FWA(r); y=y(o);
 e=(T.std_init_FWA(r))./sqrt(T.GroupCount(r)); e=e(o); e(isnan(e))=0;
-hS=errorbar(x,y,e,'-s','LineWidth',1,'Color',tcol(1,:), ...
-    'MarkerFaceColor',tcol(1,:),'MarkerSize',4);
-ylabel('FWA subscribers served'); set(gca,'YColor',tcol(1,:));
+hS=errorbar(x,y,e,'-s','LineWidth',1,'Color',cSubs, ...
+    'MarkerFaceColor',cSubs,'MarkerSize',4);
+ylabel('FWA subscribers served'); set(gca,'YColor',cSubs);
 xlabel('Number of NCRs, $N_{\mathrm{rep}}$','Interpreter','latex');
 legend([hB;hS],{'Bandwidth freed','Subscribers served'},'Location','east','FontSize',7);
 styleIEEE(fig); saveIEEE(fig,plotDir,'Band_and_K_vs_num_NCR');

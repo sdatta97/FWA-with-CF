@@ -43,16 +43,14 @@ Jakes channel aging), and 3GPP-compliant hardware impairments.
   SRS pilot overhead and per-class Jakes aging).
 - `compute_link_rates_OFDM.m` / `compute_link_rates_OFDM_wi_repeater.m` — cellular (OFDMA)
   rates, without and with NCR assistance.
-- `compute_link_rates_MIMO_mmse.m` / `compute_link_rates_MIMO_mmse_wi_repeater.m` — FWA
-  MU-MIMO MMSE rates, without and with NCR-aided hybrid scheduling.
-- `computeUtility.m` — served-CPE and utility computation against per-zone demand.
+- `compute_link_rates_MIMO_mmse.m` — FWA MU-MIMO MMSE rates.
 - `sweepNaming.m` — automated result-naming registry: swept parameters become table
   columns; constants name the output folder (`FWA_const_<names>`) and file
   (`results_<values>_<seed>.csv`).
 
 **Post-processing (run offline, after all HPC array tasks finish)**
 - `dataProcess/combineData.m` — aggregates per-seed CSVs into per-configuration summaries
-  and reduces the packing matrices to safe-load-fraction curves.
+  and reduces the packing matrices to spectrum-utilization curves.
 - `dataProcess/plotData.m` — renders the paper figures in IEEE format.
 
 **HPC**

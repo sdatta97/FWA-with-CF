@@ -74,9 +74,19 @@ beamLobe(axMap, [ox, roofY+16], carPt, 1.0, colRelay, 60);
 %victim CPE: a dish-bearing building on the join-facing half of the right
 %cell, on the UPPER (far) side so both beams approach through open sky
 ib = find(roofs & xs > 280 & xs < Dx - 100);
-if isempty(ib), ib = find(roofs & xs > 100 & xs < Dx); end %thinned fallback
+if isempty(ib), ib = find(roofs & xs > 280 & xs < Dx); end %thinned fallback
+if isempty(ib) %no dish-bearing host survived the display thinning: pick any
+               %building clear of the join clutter and draw its dish below
+    ib = find(ismember(keys,{'th','home','office'}) & xs > 280 & xs < Dx - 60);
+end
 [~,ii] = min(xs(ib)); b = D(ib(ii)); %nearest the join: longest, clearest links
 [bx,by] = prj(b.x,b.y); dishPt = [bx, by + b.H*1.04 + 19];
+if ~b.roof %give the chosen host its rooftop dish
+    W = 38*ICO.cpe.asp;
+    image('Parent',axMap,'XData',[bx-W/2 bx+W/2], ...
+          'YData',[by + b.H*1.04 + 38, by + b.H*1.04], ...
+          'CData',ICO.cpe.rgb,'AlphaData',ICO.cpe.a);
+end
 %CPE receive pattern: main lobe toward the serving gNB (right), deep null
 %toward the interfering site (left) - the nulling mechanism itself
 thp = linspace(0,2*pi,220);

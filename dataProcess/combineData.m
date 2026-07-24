@@ -9,7 +9,7 @@ clear;
 %     across seeds;
 %  2) raw packing matrices (per-user x per-(snapshot x realization)
 %     rates) in resultData/FWA_packing_analysis are reduced to the
-%     safe-load-fraction curves f(eps) = q_eps(rate)/mean(rate) and
+%     spectrum-utilization curves f(eps) = q_eps(rate)/mean(rate) and
 %     stored in packing_f_curves.csv.
 %CSV-combining pattern adapted from
 %https://in.mathworks.com/matlabcentral/answers/538119
@@ -23,7 +23,7 @@ packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
 %by the constant values. Each folder is summarized independently; group
 %keys are ALL non-outcome columns, so the aggregation adapts to
 %whatever axes were swept.
-outcomeVars = {'numCPE','numUE','init_FWA','max_FWA','Band_FWA','cell_se_ue','FWA_se'};
+outcomeVars = {'numCPE','numUE','init_FWA','Band_FWA','cell_se_ue','FWA_se'};
 constDirs = dir(fullfile(repoRoot,'resultData','FWA_const_*'));
 constDirs = constDirs([constDirs.isdir]);
 for cd_i = 1:numel(constDirs)

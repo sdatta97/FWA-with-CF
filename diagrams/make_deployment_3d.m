@@ -56,20 +56,11 @@ params.c = 3e8; %speed of light (m/s)
 %generateSetup, once the indoor/outdoor state of each UE is known
 %% Rate requirements
 %FCC 2024 Section 706 Report (FCC 24-27, https://docs.fcc.gov/public/attachments/FCC-24-27A1.pdf):
-% - mobile 5G-NR coverage benchmark 35/3 Mbps DL/UL
-% - fixed broadband benchmark 100/20 Mbps
-% - long-term fixed broadband goal 1000/500 Mbps
+% - mobile 5G-NR coverage benchmark 35/3 Mbps DL/UL (the r_min_cell anchor)
 params.r_min_cell = 35e6; %cellular DL floor at the 5th percentile: the FCC
                           %mobile 5G-NR coverage benchmark of 35/3 Mbps DL/UL
                           %(FCC 24-27); attainable here because the FWA/Wi-Fi
                           %offload carries the indoor demand
-params.r_max_FWA = 1e9;   %FWA rate cap = FCC long-term fixed broadband goal (1 Gbps),
-                          %also the Verizon 5G Home "Ultimate" gigabit tier
-params.enable_fwa_cap_realloc = 0; %gate for the r_max cap-redistribution loop in the
-                          %FWA phase (K_FWA_max). DISABLED pending review: with
-                          %demands near the cap, one exceeder's max(rmin/rate)
-                          %can claim up to half the shared band per iteration,
-                          %making K_FWA_max cliff-sensitive to ~1% rate changes
 %%
 %%
 
@@ -176,7 +167,7 @@ params.TEMPORAL_MOBILITY = 1; %1 = cellular UEs move along trajectories and the
                               %mobility model below); 0 = one static setup per seed
 %Number of antennas per UE
 params.N_UE_FWA = 8;
-params.N_UE_cell = 2; %4;
+params.N_UE_cell = 2;
 params.hr = 1.5; %outdoor UT height (m)
 %CPE mounting height is drawn per CPE in generateSetup.m: top floor of
 %its townhouse (params.apt_floors) or the strip-mall rooftop
@@ -361,15 +352,6 @@ num_rep_arr = 0:1:12; %total (0 = no-NCR baseline: sources the plain-cellular
                        %packing matrices and the pool-sweep reference) enabled repeaters; greedy max-coverage attachment
 params.ncr_benefit_gate = 1; %per-UE NCR ON/OFF side control (TR 38.867); =0 only for ablation
                      %is per donor sector, saturating near one per sector (6)
-params.FWA_REPEAT = 0; %DISABLED for now (avoids confounding the cellular-side
-                       %NCR study). 1 = HYBRID FWA scheduling with NCR assistance: CPEs
-                       %missing their demand on the shared band ("needy") get
-                       %the freed remainder of the satisfied CPEs' subband
-                       %(shrunk so every satisfied CPE still meets demand) as
-                       %a dedicated NCR-aided slice ON TOP of their f_sat
-                       %share; scheme and rationale documented in
-                       %compute_link_rates_MIMO_mmse_wi_repeater.m and at the
-                       %recompute in the demand loop. 0 = repeater-free
 params.num_repeater_per_cpe = 1; %NCRs attached per assisted user (single
                                  %rank-1 amplify-and-forward branch; 2 restores
                                  %the UE's second spatial stream via two
@@ -427,11 +409,11 @@ fwa_demand_configs = 1e6*[ 50    50    100    100;   %LOW demand profile
 %without running the simulation.
 sweepRegNames = {'take_rate','activity','num_rep','demand_profile', ...
     'rep_gain','SI_cancel','r_min_cell_Mbps','loss_pc','ISD_m','Band_MHz','HWI', ...
-    'FWArep','rank','Krep','gate','contam'};
+    'rank','Krep','gate','contam'};
 sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     fwa_demand_names, params.repeat_gain, params.SI_cancel_dB, ...
     params.r_min_cell/1e6, params.loss_pc_cell, params.ISD, Band/1e6, params.HW_IMPAIRMENTS, ...
-    params.FWA_REPEAT, params.ncr_rank, ...
+    params.ncr_rank, ...
     params.num_repeater_per_cpe, params.ncr_benefit_gate, params.fwa_pilot_contam};
 %% Simulation FR1 setup
     %% gNB locations: macro sites, each split into 3 co-located sector BSs
