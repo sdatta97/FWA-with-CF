@@ -227,7 +227,10 @@ params.high_loss_ratio = 0; %HIGH-LOSS (IRR-glass) share of RESIDENTIAL
 %mall carries a modest evening crowd (~150/km^2 over its small parcel).
 %Suburban roads carry ~4-15 active in-car users/km^2. The resulting
 %~10 cellular-active UEs per sector matches the 10-per-TRxP full-buffer
-%evaluation convention of ITU-R M.2412 / 3GPP TR 38.913.
+%evaluation convention of ITU-R M.2412 / 3GPP TR 38.913; at the DEFAULT
+%10% activity the ~20 per TRxP stays within the M.2412 framework, whose
+%evaluation-configuration Note 6 states higher user densities (e.g. 20
+%per TRxP) are not precluded.
 %FWA/WI-FI OFFLOAD: cellular guarantees coverage to OUTDOOR users
 %primarily - indoor users ride the home/venue connection (the FWA CPEs
 %of this study). Wi-Fi/femtocell offload carries ~60% of ALL mobile data
