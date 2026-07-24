@@ -7,7 +7,7 @@ set(0,'DefaultFigureVisible','off');
 %template: single-column width (3.5 in), 8 pt Times, saved as
 %.eps/.png/.fig in plots/. Run combineData.m first.
 %Figures are drawn at the model's DEFAULT operating point (20% take,
-%10% activity, high demand tier); sensitivity campaigns that sweep those
+%5% activity, low demand tier); sensitivity campaigns that sweep those
 %axes are filtered back to the defaults via refMask. The available FWA
 %bandwidth is tier-invariant (set by the cellular phase before the FWA demand
 %loop); packing is tier-invariant and drawn once.
@@ -32,12 +32,12 @@ end
 if isempty(sweepDir)
     error('no FWA_const_* folder with a plottable summary.csv (run combineData first)');
 end
-packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
+packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis_gIsite');
 plotDir = fullfile(repoRoot,'plots');
 
 T = readtable(fullfile(sweepDir,'summary.csv'));
 %REFERENCE operating point = the model defaults (20%% take, 5%% activity,
-%high tier - see SimulationMain.m). Any of these axes may be a CONSTANT of
+%low tier - see SimulationMain.m). Any of these axes may be a CONSTANT of
 %the campaign (column absent from the summary); refMask filters only on
 %the columns that exist.
 actRef = 0.05;
