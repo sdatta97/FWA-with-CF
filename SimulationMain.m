@@ -66,17 +66,22 @@ params.enable_fwa_cap_realloc = 0; %gate for the r_max cap-redistribution loop i
 
 
 %FWA CPE deployment: potential CPE SITES follow the BUILDING INVENTORY
-%(one per apartment block, single-family home, office building, and mall
+%(one per townhouse, single-family home, office building, and mall
 %unit), and the sweep is the TAKE RATE applied to that inventory. US FWA
 %serves ~12%% of broadband households in mid-2025, ~15%% by early 2026
 %(https://www.telecompetitor.com/fixed-wireless-is-thriving-and-that-could-be-a-problem-report/;
 %https://insights.opensignal.com/2025/10/20/the-state-of-us-fwa-what-impact-has-att-internet-airs-launch-had/dt;
 %https://www.ericsson.com/en/reports-and-papers/mobility-report/dataforecasts/fwa-outlook),
-%so 5-20%% brackets the market. The inventory derives from the resident
-%densities and household size below, keeping CPE supply proportional to
-%the population it serves.
-take_rate_arr = 0.05:0.05:0.20; %RESIDENTIAL FWA take rate applied to the
-                                %apartment-block and single-family inventory
+%and Ericsson forecasts ~18%% of US fixed broadband by 2030, so 5-20%%
+%brackets the market. The inventory derives from the resident densities
+%and household size below, keeping CPE supply proportional to the
+%population it serves.
+take_rate_arr = 0.20; %DEFAULT residential FWA take rate applied to the
+                      %townhouse and single-family inventory: the top of
+                      %the 5-20% market bracket (Ericsson 2030 forecast
+                      %~18% of fixed broadband; iGR addressable market
+                      %25.4% of households). Sweep 0.05:0.05:0.20 for
+                      %sensitivity studies.
 params.take_rate_biz = 0.95; %BUSINESS take rate for the commercial inventory
        %(office buildings, mall units): "nearly all businesses (95%)
        %report having at least one broadband Internet connection" (FCC
@@ -85,8 +90,19 @@ params.take_rate_biz = 0.95; %BUSINESS take rate for the commercial inventory
        %see also https://advocacy.sba.gov/2026/01/13/issue-brief-no-23-small-businesses-access-to-broadband-internet/);
        %in this FWA-served deployment those connections are the CPEs
 params.hh_size = 2.5;  %persons per household (US Census ~2.5)
-params.n_apt_blocks = 24; %apartment blocks per complex (one potential
-                          %building CPE each, serving the block as an MDU)
+params.rho_res_ring = 2500; %residents per km^2, inner TOWNHOUSE ring
+       %(one potential CPE per townhouse, individual service - no MDU
+       %aggregation). US suburbs hold few apartment blocks: ~62% of US
+       %housing is single-family detached and many suburbs exceed 90%
+       %(Census/EIA, https://www.eia.gov/consumption/residential/data/2024/hc/pdf/HC9.1_2024.pdf;
+       %https://constructioncoverage.com/research/cities-with-the-most-single-family-homes).
+       %Townhouse tracts run 10-20 units/acre NET (ULI/MRSC,
+       %https://urbanland.uli.org/development-business/thin-micro-townhouses-optimize-density;
+       %https://mrsc.org/stay-informed/mrsc-insight/april-2017/visualizing-compatible-density);
+       %the GROSS ring average here (streets, yards, commons) is 1,000
+       %units/km^2 = ~4 u/ac -> 2,500 residents/km^2, between the inner-
+       %suburb ~1,550/km^2 mean and net townhouse-tract density
+       %(https://www.jchs.harvard.edu/blog/the-implications-of-different-suburban-definitions)
 params.n_op_bldg = 3;  %office buildings per office park (one potential CPE each)
 params.n_mall_units = 6; %strip-mall anchor units (one potential CPE each, shared zone)
 Band = 100e6;
@@ -103,8 +119,10 @@ params.ISD = 1732; %inter-site distance (m); the LARGER of the two SMa
                    %area fills with vegetation and roads (below)
 params.deployRange = params.ISD/2; %cell radius (half ISD); sets the wrap-around span
 %SUBURBAN ZONING, radially per site plus one shared midpoint zone:
-% - apartment complex: ring [min_dist_2D, aptRadius] around each site,
-%   2-4 floor buildings, FWA CPEs on top floors;
+% - townhouse ring [min_dist_2D, aptRadius] around each site: the denser
+%   inner neighbourhood of ATTACHED single-family homes (townhouses,
+%   2-3 floors, FWA CPEs on top floors) - suburban housing is
+%   differently sized single-family stock, not apartment blocks;
 % - single-family homes: ring [aptRadius, homeRadius], 1-2 floors;
 % - strip mall: disc of mallRadius at the ORIGIN - the arterial midpoint
 %   between the two neighbourhoods, classic suburban commercial siting -
@@ -118,7 +136,9 @@ params.deployRange = params.ISD/2; %cell radius (half ISD); sets the wrap-around
 %   at ISD 1732 this belt spans 450-866 m, filling the larger cell;
 % - roads: in-car users over [aptRadius, deployRange], whose area (and
 %   hence user count) grows with the ISD.
-params.aptRadius = 175;  %apartment-complex ring outer radius (m)
+params.aptRadius = 175;  %townhouse-ring outer radius (m); the apt_* field
+                         %names are kept for schema stability, zone 1 IS
+                         %the townhouse ring throughout
 params.homeRadius = 450; %single-family belt outer radius (m)
 params.mallRadius = 75;  %strip-mall disc radius (m), centred at the origin
 %OFFICE PARKS: smaller commercial clusters on the arterial roads in the
@@ -126,12 +146,13 @@ params.mallRadius = 75;  %strip-mall disc radius (m), centred at the origin
 %whose co-located NCRs sit close to the noise-limited road users at the
 %coverage-limited cell edge (the CPE-hosted deployment logic of the
 %paper: repeaters go where subscriber equipment already is)
-params.n_officepark = 2; %office parks per site
+params.n_officepark = 1; %office parks per site (one modest park is the
+                         %defensible suburban norm; was 2)
 params.opRadius = 60;    %office-park parcel radius (m)
 params.opDist = 600;     %office-park centre distance from its site (m),
                          %on the roads between the homes belt and the edge
 params.op_floors = [2 3]; %low-rise office buildings, floors
-params.apt_floors = [2 4];  %apartment buildings, floors (suburban complexes)
+params.apt_floors = [2 3];  %townhouses, floors (zone 1; field name kept)
 params.home_floors = [1 2]; %single-family homes, floors
 params.wrap_margin = 30; %guard (m) added to the wrap-around square so wrapped
                          %replicas never coincide with real positions
@@ -169,7 +190,7 @@ params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
 params.hr = 1.5; %outdoor UT height (m)
 %CPE mounting height is drawn per CPE in generateSetup.m: top floor of
-%its apartment building (params.apt_floors) or the strip-mall rooftop
+%its townhouse (params.apt_floors) or the strip-mall rooftop
 params.ht_bs = 35; %BS antenna height (m), SMa (Table 7.2-5)
 %% Sectored BS antennas: 3 sectors per site, element pattern per TR 38.901 Table 7.3-1
 params.sectors_per_site = 3;
@@ -201,16 +222,21 @@ params.high_loss_ratio = 0; %HIGH-LOSS (IRR-glass) share of RESIDENTIAL
        %(enforced by zone in generateSetup.m)
 %Two FIXED macro sites (M_sites below)
 %Active-user densities: GROSS busy-hour concurrently active data users
-%on ANY access network, per suburban zone. Apartment complexes hold
-%~4,000-6,000 residents/km^2 and single-family suburbs ~1,000-1,500
-%(Demographia, http://demographia.com/db-intlsub.htm); a ~5% busy-hour
-%active share - the top of the typical 3-5% suburban range, reflecting
-%high-data-rate evening applications - gives ~250 and ~60 gross active
-%users/km^2 respectively. The strip mall carries a modest evening crowd
-%(~150/km^2 over its small parcel). Suburban roads carry ~4-15 active
-%in-car users/km^2. The resulting ~12 cellular-active UEs per sector
-%sits near the 10-per-TRxP full-buffer evaluation convention of ITU-R
-%M.2412 / 3GPP TR 38.913.
+%on ANY access network, per suburban zone. The inner townhouse ring
+%holds ~2,500 residents/km^2 (see rho_res_ring: gross ~4 units/acre
+%against the 10-20 u/ac NET of townhouse tracts) and single-family
+%suburbs ~1,000-1,500 residents/km^2 (Demographia,
+%http://demographia.com/db-intlsub.htm; median US suburban tracts
+%~700-770/km^2 with inner suburbs ~1,550/km^2,
+%https://www.jchs.harvard.edu/blog/the-implications-of-different-suburban-definitions),
+%a 2:1 gradient that spreads population evenly instead of concentrating
+%it in apartment blocks. A ~5% busy-hour active share - the top of the
+%typical 3-5% suburban range, reflecting high-data-rate evening
+%applications - gives ~125 and ~60 gross active users/km^2. The strip
+%mall carries a modest evening crowd (~150/km^2 over its small parcel).
+%Suburban roads carry ~4-15 active in-car users/km^2. The resulting
+%~10 cellular-active UEs per sector matches the 10-per-TRxP full-buffer
+%evaluation convention of ITU-R M.2412 / 3GPP TR 38.913.
 %FWA/WI-FI OFFLOAD: cellular guarantees coverage to OUTDOOR users
 %primarily - indoor users ride the home/venue connection (the FWA CPEs
 %of this study). Wi-Fi/femtocell offload carries ~60% of ALL mobile data
@@ -221,7 +247,7 @@ params.high_loss_ratio = 0; %HIGH-LOSS (IRR-glass) share of RESIDENTIAL
 %(https://insights.opensignal.com/2025/10/20/the-state-of-us-fwa-what-impact-has-att-internet-airs-launch-had/dt);
 %an 80% indoor offload share follows, and the offloaded indoor demand IS
 %the FWA traffic this paper monetizes. Cellular user classes:
-% - OUTDOOR PEDESTRIANS (3 km/h, no O2I, 1.5 m) in the apartment ring,
+% - OUTDOOR PEDESTRIANS (3 km/h, no O2I, 1.5 m) in the townhouse ring,
 %   the homes belt, and the mall parking - a pedestrian_ratio share of
 %   each zone's gross actives (TR 38.901 Table 7.2-5 indoor:outdoor);
 % - IN-CAR users (40 km/h, Table 7.2-5) on the roads [aptRadius,
@@ -234,11 +260,16 @@ params.high_loss_ratio = 0; %HIGH-LOSS (IRR-glass) share of RESIDENTIAL
 params.rho_res_home = 1200; %residents per km^2, single-family belt
 params.activity_ref = 0.05; %REFERENCE busy-hour activity share: the per-zone
                          %gross-active densities below are the values observed
-                         %at this share (apartment ring = 5000 residents/km^2 x 5%)
-activity_arr = 0.025:0.025:0.1; %SWEPT busy-hour device-activity share; every
-                         %zone's gross-active density (and the road density)
-                         %scales linearly with activity_arr/activity_ref
-lambda_UE_apt_base = 250;  %GROSS active users per km^2 at activity_ref, apartment ring
+                         %at this share (townhouse ring = 2500 residents/km^2 x 5%)
+activity_arr = 0.10; %DEFAULT busy-hour device-activity share: the top of
+                         %the studied range, where cellular contention binds
+                         %and the NCR mechanisms are exercised (5% is the
+                         %ITU-R-anchored reference share; every zone's
+                         %gross-active density and the road density scale
+                         %linearly with activity_arr/activity_ref; sweep
+                         %0.025:0.025:0.1 for sensitivity studies)
+lambda_UE_apt_base = 125;  %GROSS active users per km^2 at activity_ref,
+                           %townhouse ring (rho_res_ring x activity_ref)
 lambda_UE_home_base = 60;  %GROSS active users per km^2 at activity_ref, single-family belt
 lambda_UE_mall_base = 150; %GROSS active users per km^2 at activity_ref, strip-mall parcel
 lambda_UE_op_base = 200;   %GROSS active users per km^2 at activity_ref, office-park
@@ -392,7 +423,7 @@ params.nbrOfRealizations = 10; %fading realizations per snapshot (layer 3)
 params.dt_snap = 1;            %time between mobility snapshots (s)
 
 %Named, swept FWA DEMAND PROFILES: per-zone minimum committed rates
-%[apt-block(MDU) home mall office] in Mbps; the profile NAME tags the
+%[townhouse home mall office] in Mbps; the profile NAME tags the
 %result filenames and the demand_profile CSV column. Anchors: US
 %residential plans span ~50 Mbps entry to ~300 Mbps top standard tiers,
 %~150 Mbps median delivered (Light Reading,
@@ -402,13 +433,13 @@ params.dt_snap = 1;            %time between mobility snapshots (s)
 %Business plans run 100/200/400 Mbps (Verizon Business 5G Internet,
 %https://www.verizon.com/business/products/internet/5g/): offices/malls
 %take 100/200/500 across the profiles (HIGH = top tier + multi-tenant
-%margin). The apartment-block CPE serves an MDU: 100 (FCC fixed-broadband
-%benchmark) / 300 (top residential plan as aggregate) / 500 (assumption,
-%flagged).
-fwa_demand_names = {'low','medium','high'};
-fwa_demand_configs = 1e6*[100    50    100    100;   %LOW demand profile
-                          300   150    200    200;   %MEDIUM demand profile
-                          500   300    500    500];  %HIGH demand profile
+%margin). Townhouse CPEs serve ONE household each (no MDU aggregation),
+%so both residential zones share the per-home tiers.
+fwa_demand_names = {'high'}; %DEFAULT: the binding (revenue-relevant) tier -
+%lower tiers are served in full and add no information at the default
+%operating point. For tier sensitivity restore {'low','medium','high'} with
+%rows [50 50 100 100; 150 150 200 200] above the high row.
+fwa_demand_configs = 1e6*[300   300    500    500];  %HIGH demand profile
 %% AUTOMATED OUTPUT NAMING (see sweepNaming.m): every sweepable
 %parameter is registered here; axes with numel > 1 are detected as
 %swept and become CSV table columns, scalars become constants whose
@@ -448,7 +479,7 @@ end
     params.locationsBS = kron(siteLocations, ones(S,1)); %sectors co-located at their site
     params.sector_boresights = repmat(sector_offsets, M_sites, 1); %boresight azimuth per BS entry (deg)
     for idxnumCPE = 1:length(take_rate_arr) %FWA take-rate sweep over the inventory
-    %% CPE locations: numCPE_all per site across THREE zones - apartment
+    %% CPE locations: numCPE_all per site across the zones - townhouse
     %top floors, single-family rooftops in the homes belt (FWA's core
     %market), and the strip-mall rooftop at the origin
     %office-park centres: n_officepark per site at opDist, random azimuths
@@ -459,11 +490,12 @@ end
             siteLocations(idxSite,1) + 1i*siteLocations(idxSite,2) + params.opDist*exp(1i*thOP);
     end
     n_parks = numel(opC);
-    %BUILDING INVENTORY per site: apartment blocks (fixed count per
-    %complex), single-family homes (residents / household size over the
-    %belt area), office buildings, and the shared mall units
+    %BUILDING INVENTORY per site: townhouses and single-family homes
+    %(residents / household size over each zone's area), office
+    %buildings, and the shared mall units
+    A_ring_inv = pi*((params.aptRadius/1000)^2 - (params.min_dist_2D/1000)^2); %km^2
     A_home_inv = pi*((params.homeRadius/1000)^2 - (params.aptRadius/1000)^2); %km^2
-    inv_apt = params.n_apt_blocks;
+    inv_apt = round(params.rho_res_ring*A_ring_inv/params.hh_size);
     inv_home = round(params.rho_res_home*A_home_inv/params.hh_size);
     inv_op = params.n_officepark*params.n_op_bldg;
     take_rate = take_rate_arr(idxnumCPE);
@@ -489,7 +521,7 @@ end
     posOP = opC(parkOfCPE) + params.opRadius*sqrt(rand(n_cpe_op,1)).*exp(2i*pi*rand(n_cpe_op,1));
     CPE_op = [real(posOP), imag(posOP)];
     CPE_locations = [CPE_apt; CPE_home; CPE_mall; CPE_op];
-    %CPE zone ids: 1 apartment, 2 single-family home, 3 strip mall, 4 office park
+    %CPE zone ids: 1 townhouse, 2 single-family home, 3 strip mall, 4 office park
     %(the demand tier of each CPE follows its zone; set after cpe_zone below)
     params.cpe_zone = [ones(M_sites*n_apt_site,1); 2*ones(M_sites*n_home_site,1); ...
                        3*ones(n_cpe_mall,1); 4*ones(n_cpe_op,1)];

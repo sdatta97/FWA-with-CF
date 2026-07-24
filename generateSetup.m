@@ -95,8 +95,8 @@ h_bldg = params.h_bldg;      %average building height h (m)
 W_street = params.W_street;  %average street width W (m)
 %LOS probability clutter parameters (Table 7.4.2-1, SMa row): the
 %suburban ZONING MIX expressed in the standard's own clutter densities -
-%commercial (strip malls), residential (homes and apartment complexes),
-%and natural vegetation
+%commercial (strip malls), residential (townhouses and single-family
+%homes), and natural vegetation
 d_clutter = 30;
 h_com = 20; h_res = 8; h_veg = 15;
 r_com = 0.02; r_res = 0.18; r_veg = params.r_vegetation;
@@ -204,27 +204,28 @@ if evolveMode
     hUT = mobState.hUT;
     O2IdB = mobState.O2IdB;
 else
-    %Zone-dependent building heights. Apartment complexes: 2-4 floors;
+    %Zone-dependent building heights. Townhouses (zone 1): 2-3 floors;
     %single-family homes: 1-2 floors; strip mall: single-storey
     %commercial. Zone of each cellular UE in params.ue_zone (1 =
-    %apartment, 2 = home, 3 = mall); mall-mounted CPEs flagged in
-    %params.cpe_is_mall. Fallbacks keep older callers working.
-    if isfield(params,'apt_floors'), apt_flr = params.apt_floors; else, apt_flr = [4 8]; end
+    %townhouse, 2 = home, 3 = mall); mall-mounted CPEs flagged in
+    %params.cpe_is_mall. Fallbacks keep older callers working (the
+    %apt_* field names are legacy identifiers for the zone-1 ring).
+    if isfield(params,'apt_floors'), apt_flr = params.apt_floors; else, apt_flr = [2 3]; end
     if isfield(params,'home_floors'), home_flr = params.home_floors; else, home_flr = [1 2]; end
     if isfield(params,'op_floors'), op_flr = params.op_floors; else, op_flr = [2 3]; end
     if isfield(params,'ue_zone') && ~isempty(params.ue_zone)
         ue_zone = params.ue_zone;
     else
-        ue_zone = ones(K-K_FWA,1); %default: all apartment-zone
+        ue_zone = ones(K-K_FWA,1); %default: all townhouse-zone
     end
     if isfield(params,'cpe_zone') && ~isempty(params.cpe_zone)
         cpe_zone = params.cpe_zone;
     else
-        cpe_zone = ones(K_FWA,1); %default: all apartment-mounted
+        cpe_zone = ones(K_FWA,1); %default: all townhouse-mounted
     end
     hUT = params.hr*ones(K,1);
-    %CPE mounting, all OUTDOOR: apartment CPEs at the TOP FLOOR of their
-    %2-4 floor building; single-family CPEs at the top floor of their
+    %CPE mounting, all OUTDOOR: townhouse CPEs at the TOP FLOOR of their
+    %2-3 floor building; single-family CPEs at the top floor of their
     %1-2 floor home (rooftop/eave mount); strip-mall CPEs on the
     %single-storey rooftop (~6 m) with open sightlines
     for k = 1:K_FWA
@@ -237,7 +238,7 @@ else
             case 2 %single-family home
                 Nfl = randi([home_flr(1) home_flr(2)]);
                 hUT(k) = 3*(Nfl - 1) + 1.5;
-            otherwise %apartment
+            otherwise %townhouse
                 Nfl = randi([apt_flr(1) apt_flr(2)]);
                 hUT(k) = 3*(Nfl - 1) + 1.5;
         end
@@ -265,7 +266,7 @@ else
                     nfl = randi([1 Nfl]);
                     hUT(k) = 3*(nfl - 1) + 1.5;
                     O2IdB(k) = PL_tw + 0.5*d2Din + sigma_P*randn;
-                otherwise %apartment complex: 2-4 floors; residential
+                otherwise %townhouse: 2-3 floors; residential
                           %buildings are low-loss unless the caller sets
                           %a high-loss ratio
                     Nfl = randi([apt_flr(1) apt_flr(2)]);

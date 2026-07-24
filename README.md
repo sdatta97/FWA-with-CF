@@ -59,10 +59,10 @@ Jakes channel aging), and 3GPP-compliant hardware impairments.
 - `submit.sbatch` — SLURM array entry point (one array task per random seed).
 
 **Figure generators**
-- `diagrams/make_deployment_diagram.m` — 2D top-down device map of a drop.
-- `diagrams/make_deployment_3d.m` — 3D deployment scene; also exports scene geometry.
+- `diagrams/make_deployment_3d.m` — deployment scene (2.5D icon map); also exports scene geometry.
+- `diagrams/make_deployment_combined.m` — the system-model figure: deployment scene with the NCR and interference-nulling mechanisms drawn in.
 - `diagrams/render_scene.py` — headless Blender render of the exported scene.
-- `diagrams/make_mechanism_figs.m` — NCR-support and interference-nulling mechanism vignettes.
+- `diagrams/make_mechanism_figs.m` — standalone NCR-support and interference-nulling vignettes.
 
 ## Running
 

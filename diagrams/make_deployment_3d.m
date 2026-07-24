@@ -75,7 +75,7 @@ params.enable_fwa_cap_realloc = 0; %gate for the r_max cap-redistribution loop i
 
 
 %FWA CPE deployment: potential CPE SITES follow the BUILDING INVENTORY
-%(one per apartment block, single-family home, office building, and mall
+%(one per townhouse, single-family home, office building, and mall
 %unit), and the sweep is the TAKE RATE applied to that inventory. US FWA
 %serves ~12%% of broadband households in mid-2025, ~15%% by early 2026
 %(https://www.telecompetitor.com/fixed-wireless-is-thriving-and-that-could-be-a-problem-report/;
@@ -85,7 +85,7 @@ params.enable_fwa_cap_realloc = 0; %gate for the r_max cap-redistribution loop i
 %densities and household size below, keeping CPE supply proportional to
 %the population it serves.
 take_rate_arr = 0.20; %diagram: production take rate FWA take rate applied to the
-                                %apartment-block and single-family inventory
+                                %townhouse and single-family inventory
 params.take_rate_biz = 0.95; %BUSINESS take rate for the commercial inventory
        %(office buildings, mall units): "nearly all businesses (95%)
        %report having at least one broadband Internet connection" (FCC
@@ -94,8 +94,9 @@ params.take_rate_biz = 0.95; %BUSINESS take rate for the commercial inventory
        %see also https://advocacy.sba.gov/2026/01/13/issue-brief-no-23-small-businesses-access-to-broadband-internet/);
        %in this FWA-served deployment those connections are the CPEs
 params.hh_size = 2.5;  %persons per household (US Census ~2.5)
-params.n_apt_blocks = 24; %apartment blocks per complex (one potential
-                          %building CPE each, serving the block as an MDU)
+params.rho_res_ring = 2500; %residents per km^2, inner TOWNHOUSE ring (one
+                          %potential CPE per townhouse; no MDU aggregation -
+                          %full sourcing in SimulationMain.m)
 params.n_op_bldg = 3;  %office buildings per office park (one potential CPE each)
 params.n_mall_units = 6; %strip-mall anchor units (one potential CPE each, shared zone)
 Band = 100e6;
@@ -112,8 +113,8 @@ params.ISD = 1732; %inter-site distance (m); the LARGER of the two SMa
                    %area fills with vegetation and roads (below)
 params.deployRange = params.ISD/2; %cell radius (half ISD); sets the wrap-around span
 %SUBURBAN ZONING, radially per site plus one shared midpoint zone:
-% - apartment complex: ring [min_dist_2D, aptRadius] around each site,
-%   2-4 floor buildings, FWA CPEs on top floors;
+% - townhouse ring [min_dist_2D, aptRadius] around each site: attached
+%   single-family homes, 2-3 floors, FWA CPEs on top floors;
 % - single-family homes: ring [aptRadius, homeRadius], 1-2 floors;
 % - strip mall: disc of mallRadius at the ORIGIN - the arterial midpoint
 %   between the two neighbourhoods, classic suburban commercial siting -
@@ -127,7 +128,7 @@ params.deployRange = params.ISD/2; %cell radius (half ISD); sets the wrap-around
 %   at ISD 1732 this belt spans 450-866 m, filling the larger cell;
 % - roads: in-car users over [aptRadius, deployRange], whose area (and
 %   hence user count) grows with the ISD.
-params.aptRadius = 175;  %apartment-complex ring outer radius (m)
+params.aptRadius = 175;  %townhouse-ring outer radius (m); apt_* names kept
 params.homeRadius = 450; %single-family belt outer radius (m)
 params.mallRadius = 75;  %strip-mall disc radius (m), centred at the origin
 %OFFICE PARKS: smaller commercial clusters on the arterial roads in the
@@ -135,12 +136,12 @@ params.mallRadius = 75;  %strip-mall disc radius (m), centred at the origin
 %whose co-located NCRs sit close to the noise-limited road users at the
 %coverage-limited cell edge (the CPE-hosted deployment logic of the
 %paper: repeaters go where subscriber equipment already is)
-params.n_officepark = 2; %office parks per site
+params.n_officepark = 1; %office parks per site
 params.opRadius = 60;    %office-park parcel radius (m)
 params.opDist = 600;     %office-park centre distance from its site (m),
                          %on the roads between the homes belt and the edge
 params.op_floors = [2 3]; %low-rise office buildings, floors
-params.apt_floors = [2 4];  %apartment buildings, floors (suburban complexes)
+params.apt_floors = [2 3];  %townhouses, floors (zone 1; field name kept)
 params.home_floors = [1 2]; %single-family homes, floors
 params.wrap_margin = 30; %guard (m) added to the wrap-around square so wrapped
                          %replicas never coincide with real positions
@@ -178,7 +179,7 @@ params.N_UE_FWA = 8;
 params.N_UE_cell = 2; %4;
 params.hr = 1.5; %outdoor UT height (m)
 %CPE mounting height is drawn per CPE in generateSetup.m: top floor of
-%its apartment building (params.apt_floors) or the strip-mall rooftop
+%its townhouse (params.apt_floors) or the strip-mall rooftop
 params.ht_bs = 35; %BS antenna height (m), SMa (Table 7.2-5)
 %% Sectored BS antennas: 3 sectors per site, element pattern per TR 38.901 Table 7.3-1
 params.sectors_per_site = 3;
@@ -230,7 +231,7 @@ params.high_loss_ratio = 0; %HIGH-LOSS (IRR-glass) share of RESIDENTIAL
 %(https://insights.opensignal.com/2025/10/20/the-state-of-us-fwa-what-impact-has-att-internet-airs-launch-had/dt);
 %an 80% indoor offload share follows, and the offloaded indoor demand IS
 %the FWA traffic this paper monetizes. Cellular user classes:
-% - OUTDOOR PEDESTRIANS (3 km/h, no O2I, 1.5 m) in the apartment ring,
+% - OUTDOOR PEDESTRIANS (3 km/h, no O2I, 1.5 m) in the townhouse ring,
 %   the homes belt, and the mall parking - a pedestrian_ratio share of
 %   each zone's gross actives (TR 38.901 Table 7.2-5 indoor:outdoor);
 % - IN-CAR users (40 km/h, Table 7.2-5) on the roads [aptRadius,
@@ -243,11 +244,11 @@ params.high_loss_ratio = 0; %HIGH-LOSS (IRR-glass) share of RESIDENTIAL
 params.rho_res_home = 1200; %residents per km^2, single-family belt
 params.activity_ref = 0.05; %REFERENCE busy-hour activity share: the per-zone
                          %gross-active densities below are the values observed
-                         %at this share (apartment ring = 5000 residents/km^2 x 5%)
-activity_arr = 0.05; %diagram: 5% activity level busy-hour device-activity share; every
+                         %at this share (townhouse ring = 2500 residents/km^2 x 5%)
+activity_arr = 0.10; %diagram: 10% activity level busy-hour device-activity share; every
                          %zone's gross-active density (and the road density)
                          %scales linearly with activity_arr/activity_ref
-lambda_UE_apt_base = 250;  %GROSS active users per km^2 at activity_ref, apartment ring
+lambda_UE_apt_base = 125;  %GROSS active users per km^2 at activity_ref, townhouse ring
 lambda_UE_home_base = 60;  %GROSS active users per km^2 at activity_ref, single-family belt
 lambda_UE_mall_base = 150; %GROSS active users per km^2 at activity_ref, strip-mall parcel
 lambda_UE_op_base = 200;   %GROSS active users per km^2 at activity_ref, office-park
@@ -411,13 +412,12 @@ params.dt_snap = 1;            %time between mobility snapshots (s)
 %Business plans run 100/200/400 Mbps (Verizon Business 5G Internet,
 %https://www.verizon.com/business/products/internet/5g/): offices/malls
 %take 100/200/500 across the profiles (HIGH = top tier + multi-tenant
-%margin). The apartment-block CPE serves an MDU: 100 (FCC fixed-broadband
-%benchmark) / 300 (top residential plan as aggregate) / 500 (assumption,
-%flagged).
+%margin). Townhouse CPEs serve ONE household each, so both residential
+%zones share the per-home tiers.
 fwa_demand_names = {'low','medium','high'};
-fwa_demand_configs = 1e6*[100    50    100    100;   %LOW demand profile
-                          300   150    200    200;   %MEDIUM demand profile
-                          500   300    500    500];  %HIGH demand profile
+fwa_demand_configs = 1e6*[ 50    50    100    100;   %LOW demand profile
+                          150   150    200    200;   %MEDIUM demand profile
+                          300   300    500    500];  %HIGH demand profile
 %% AUTOMATED OUTPUT NAMING (see sweepNaming.m): every sweepable
 %parameter is registered here; axes with numel > 1 are detected as
 %swept and become CSV table columns, scalars become constants whose
@@ -451,7 +451,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     params.locationsBS = kron(siteLocations, ones(S,1)); %sectors co-located at their site
     params.sector_boresights = repmat(sector_offsets, M_sites, 1); %boresight azimuth per BS entry (deg)
     for idxnumCPE = 1:length(take_rate_arr) %FWA take-rate sweep over the inventory
-    %% CPE locations: numCPE_all per site across THREE zones - apartment
+    %% CPE locations: numCPE_all per site across the zones - townhouse
     %top floors, single-family rooftops in the homes belt (FWA's core
     %market), and the strip-mall rooftop at the origin
     %office-park centres: n_officepark per site at opDist, random azimuths
@@ -462,11 +462,12 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
             siteLocations(idxSite,1) + 1i*siteLocations(idxSite,2) + params.opDist*exp(1i*thOP);
     end
     n_parks = numel(opC);
-    %BUILDING INVENTORY per site: apartment blocks (fixed count per
-    %complex), single-family homes (residents / household size over the
-    %belt area), office buildings, and the shared mall units
+    %BUILDING INVENTORY per site: townhouses and single-family homes
+    %(residents / household size over each zone's area), office
+    %buildings, and the shared mall units
+    A_ring_inv = pi*((params.aptRadius/1000)^2 - (params.min_dist_2D/1000)^2); %km^2
     A_home_inv = pi*((params.homeRadius/1000)^2 - (params.aptRadius/1000)^2); %km^2
-    inv_apt = params.n_apt_blocks;
+    inv_apt = round(params.rho_res_ring*A_ring_inv/params.hh_size);
     inv_home = round(params.rho_res_home*A_home_inv/params.hh_size);
     inv_op = params.n_officepark*params.n_op_bldg;
     take_rate = take_rate_arr(idxnumCPE);
@@ -492,7 +493,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     posOP = opC(parkOfCPE) + params.opRadius*sqrt(rand(n_cpe_op,1)).*exp(2i*pi*rand(n_cpe_op,1));
     CPE_op = [real(posOP), imag(posOP)];
     CPE_locations = [CPE_apt; CPE_home; CPE_mall; CPE_op];
-    %CPE zone ids: 1 apartment, 2 single-family home, 3 strip mall, 4 office park
+    %CPE zone ids: 1 townhouse, 2 single-family home, 3 strip mall, 4 office park
     %(the demand tier of each CPE follows its zone; set after cpe_zone below)
     params.cpe_zone = [ones(M_sites*n_apt_site,1); 2*ones(M_sites*n_home_site,1); ...
                        3*ones(n_cpe_mall,1); 4*ones(n_cpe_op,1)];
@@ -611,7 +612,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     %Replaces the extruded-box scene with recolored open-license icons
     %(diagrams/icons; see README.txt) drawn as upright billboards on an
     %obliquely projected ground plane (sx = x + kx*y, sy = ky*y). Object
-    %glyphs: gNB tower, zoned buildings (apartment/home/mall/office) each
+    %glyphs: gNB tower, zoned buildings (townhouse/home/mall/office) each
     %carrying a rooftop CPE dish, trees, merged pedestrian/indoor UEs (same
     %low-mobility profile) and in-car UEs. Painter's algorithm by depth.
     rng(7); %visual-only randomness (tree placement, building heights)
@@ -652,14 +653,14 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     end
 
     %assemble drawables: world ground (x,y), icon key, world height, rooftop-CPE flag
-    zc = params.cpe_zone; zoneKey = {'apt','home','mall','office'};
+    zc = params.cpe_zone; zoneKey = {'th','home','mall','office'};
     D = struct('x',{},'y',{},'key',{},'H',{},'roof',{});
     siteC = siteLocations(:,1) + 1i*siteLocations(:,2); Rclear = 60; %clear plaza kept around each mast
     homeCtr = 0;
     for k2 = 1:size(CPE_locations,1)
         if zc(k2)==2, homeCtr = homeCtr+1; if mod(homeCtr,3)==0, continue; end, end %thin dense homes (display)
         switch zc(k2)
-            case 1, H = 95 + 12*randi([2 4]);
+            case 1, H = 62 + 12*randi([2 3]); %townhouse, a notch above the detached homes
             case 2, H = 55 + 12*randi([1 2]);
             case 3, H = 62;
             case 4, H = 70 + 11*randi([2 3]);
@@ -701,8 +702,8 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     siteReal = siteLocations(:,1) + 1i*siteLocations(:,2);
     rmax = Dx - 35;                                   %keep content off the central join
     Dn = struct('x',{},'y',{},'key',{},'H',{},'roof',{});
-    %sceneThin (combined figure): sparser display - 2 apartment blocks per
-    %cell, half the homes, trees and cars - so the mechanism overlays read
+    %sceneThin (combined figure): sparser display - crowd classes thinned
+    %one-in-three - so the mechanism overlays read
     thinMode = exist('sceneThin','var') && sceneThin;
     cntApt = 0; cntHome = 0; cntTree = 0; cntPer = 0; %cars thinned after the loop
     for j = 1:numel(D)
@@ -713,7 +714,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         if ni ~= rIdx, continue; end                 %keep only the right cell (left = its mirror)
         if thinMode
             switch d.key %keep one in three of the crowd classes
-                case 'apt',    cntApt = cntApt+1;   if cntApt > 2, continue; end
+                case 'th',     cntApt = cntApt+1;   if mod(cntApt,3)~=1, continue; end
                 case 'home',   cntHome = cntHome+1; if mod(cntHome,3)~=1, continue; end
                 case 'tree',   cntTree = cntTree+1; if mod(cntTree,3)~=1, continue; end
                 case 'person', cntPer = cntPer+1;   if mod(cntPer,3)~=1, continue; end
@@ -723,6 +724,21 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         if rr > rmax, rel = rel*(rmax/rr); end
         dR = d; dR.x = cR(1)+rel(1); dR.y = cR(2)+rel(2); Dn(end+1) = dR; %#ok<AGROW>
         dL = d; dL.x = cL(1)-rel(1); dL.y = cL(2)+rel(2); Dn(end+1) = dL; %#ok<AGROW> mirror across x=0
+    end
+    %Pin the (single) office park to a clean display spot in thin mode:
+    %the random park azimuth can drop it behind the tower or under the
+    %legend row; the mechanism overlays need it toward the join-side
+    %cell edge (visual repositioning only, before the pair selector runs)
+    if thinMode
+        iOf = find(strcmp({Dn.key},'office'));
+        iR = iOf([Dn(iOf).x] > 0);
+        if ~isempty(iR)
+            tgt = cR + [-300 -170];
+            dx = tgt(1) - mean([Dn(iR).x]); dy = tgt(2) - mean([Dn(iR).y]);
+            for k = iR, Dn(k).x = Dn(k).x + dx; Dn(k).y = Dn(k).y + dy; end
+            iL = iOf([Dn(iOf).x] <= 0);   %mirrored copies move symmetrically
+            for k = iL, Dn(k).x = Dn(k).x - dx; Dn(k).y = Dn(k).y + dy; end
+        end
     end
     %Cars are thinned LAST: a mechanism selector (if supplied) first picks
     %its relay pair from the FULL car set, and that car is then kept while
@@ -744,7 +760,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     end
 
     twrH = 165 + 95*thinMode; %combined figure: taller gNB so the beam
-                              %lobes clear the apartment blocks
+                              %lobes clear the buildings
     for s = 1:2
         Dn(end+1) = struct('x',dispC(s,1),'y',dispC(s,2),'key','tower','H',twrH,'roof',false); %#ok<AGROW>
     end
@@ -775,7 +791,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     axis(axL,[0 1 0 1]); axis(axL,'off'); axL.YDir = 'normal';
     entries = {
         'tower', 'gNB site (3 sectors, 35 m tower)';
-        'apt',   'Apartment block (2-4 floors)';
+        'th',    'Townhouse (2-3 floors)';
         'home',  'Single-family home (1-2 floors)';
         'mall',  'Strip-mall unit';
         'office','Office building (2-3 floors)';
@@ -803,7 +819,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     fprintf(fid,'type,x,y,height,width\n');
     for s = 1:M_sites, fprintf(fid,'gnb,%.1f,%.1f,%.1f,8\n', siteLocations(s,1), siteLocations(s,2), params.ht_bs); end
     for k2 = 1:size(CPE_locations,1)
-        tt = {'apt','home','mall','office'};
+        tt = {'th','home','mall','office'};
         fprintf(fid,'%s,%.1f,%.1f,0,0\n', tt{zc(k2)}, CPE_locations(k2,1), CPE_locations(k2,2));
     end
     for k2 = 1:size(UE_locations,1)

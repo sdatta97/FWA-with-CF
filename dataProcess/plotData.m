@@ -6,24 +6,25 @@ set(0,'DefaultFigureVisible','off');
 %analysis) and produces the journal figures, styled for the IEEE
 %template: single-column width (3.5 in), 8 pt Times, saved as
 %.eps/.png/.fig in plots/. Run combineData.m first.
-%Figures are drawn at a REFERENCE operating point (the largest take
-%rate, the activity closest to the 5%% busy-hour reference, and a
-%mid-size NCR pool). Metrics that depend on the FWA demand tier
-%(subscribers served, FWA SE) get one curve per tier; the freed
-%bandwidth is tier-INVARIANT (set by the cellular phase before the FWA
-%demand loop), so it is split by activity instead; packing is
-%tier-invariant and drawn once.
+%Figures are drawn at the model's DEFAULT operating point (20% take,
+%10% activity, high demand tier); sensitivity campaigns that sweep those
+%axes are filtered back to the defaults via refMask. The freed bandwidth
+%is tier-invariant (set by the cellular phase before the FWA demand
+%loop); packing is tier-invariant and drawn once.
 repoRoot = fullfile(fileparts(mfilename('fullpath')),'..');
 %newest sweepNaming.m result folder whose summary carries the plot axes
 cdirs = dir(fullfile(repoRoot,'resultData','FWA_const_*'));
 cdirs = cdirs([cdirs.isdir]);
 [~,ord] = sort([cdirs.datenum],'descend');
 sweepDir = '';
+%default-config summaries carry only num_rep as a swept axis (take rate,
+%activity, and demand tier are constants baked into the folder name), so
+%require only the NCR axis plus the plotted outcomes
 for ci = ord
     cand = fullfile(cdirs(ci).folder, cdirs(ci).name);
     if isfile(fullfile(cand,'summary.csv'))
         vars = readtable(fullfile(cand,'summary.csv')).Properties.VariableNames;
-        if all(ismember({'num_rep','demand_profile','activity'}, vars))
+        if all(ismember({'num_rep','mean_Band_FWA','mean_init_FWA'}, vars))
             sweepDir = cand; break
         end
     end
@@ -35,29 +36,44 @@ packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
 plotDir = fullfile(repoRoot,'plots');
 
 T = readtable(fullfile(sweepDir,'summary.csv'));
-takeRef = max(T.take_rate);       %largest take rate = most CPEs
-%FIXED busy-hour device activity: 5%% - the most defensible US-suburban
-%value (top of the 3-5%% suburban range, and it reproduces the ITU-R
-%M.2412 ~10-users-per-TRxP evaluation density; see SimulationMain.m).
-actRef = 0.05;
-ua = unique(T.activity); if ~any(ua==actRef), [~,ia]=min(abs(ua-0.05)); actRef=ua(ia); end
-tiers = {'low','medium','high'}; tierLbl = {'Low demand','Medium demand','High demand'};
-tcol = [0 0.45 0.74; 0.85 0.33 0.10; 0.47 0.67 0.19]; tmk = {'-s','-d','-^'};
+%REFERENCE operating point = the model defaults (20%% take, 10%% activity,
+%high tier - see SimulationMain.m). Any of these axes may be a CONSTANT of
+%the campaign (column absent from the summary); refMask filters only on
+%the columns that exist.
+actRef = 0.10;
+if ismember('activity',T.Properties.VariableNames)
+    ua = unique(T.activity); [~,ia]=min(abs(ua-actRef)); actRef=ua(ia);
+end
+refMask = true(height(T),1);
+if ismember('take_rate',T.Properties.VariableNames), refMask = refMask & T.take_rate==max(T.take_rate); end
+if ismember('activity',T.Properties.VariableNames),  refMask = refMask & T.activity==actRef; end
+tcol = [0 0.45 0.74; 0.85 0.33 0.10; 0.47 0.67 0.19];
 
-%% Dual-axis figure at the fixed activity: bandwidth freed for FWA (left,
-%tier-invariant) and FWA subscribers served (right, one curve per demand
-%tier), vs the number of NCRs. Error bars = +/-1 s.e. over seeds.
+%% Dual-axis figure at the fixed activity: bandwidth FREED BY the NCRs
+%(left, tier-invariant) and FWA subscribers served (right), vs the number
+%of NCRs. Error bars = +/-1 s.e. over seeds.
+%FREED bandwidth is the NCR-attributable RELIEF, Band_FWA(N) -
+%Band_FWA(0): the num_rep = 0 fallow band exists without any NCR, so the
+%freed curve starts at 0 by construction (the baseline s.e. is absorbed
+%into the delta; per-seed pairing is CRN so the subtraction is fair).
 fig=figure('Visible','off'); hold on; grid on;
 yyaxis left
-rB = T.take_rate==takeRef & T.activity==actRef & strcmp(T.demand_profile,'low'); %tier-invariant
+rB = refMask; %tier-invariant left axis
+if ismember('demand_profile',T.Properties.VariableNames)
+    rB = rB & strcmp(T.demand_profile,T.demand_profile{find(refMask,1)});
+end
 [xb,ob]=sort(T.num_rep(rB)); yb=T.mean_Band_FWA(rB)/1e6; yb=yb(ob);
+yb = yb - yb(xb==0); %relief over the no-NCR fallow baseline
 eb=(T.std_Band_FWA(rB)/1e6)./sqrt(T.GroupCount(rB)); eb=eb(ob); eb(isnan(eb))=0;
 hB=errorbar(xb,yb,eb,'-o','LineWidth',1.4,'Color','k','MarkerFaceColor','k','MarkerSize',4);
-ylabel('Bandwidth freed for FWA (MHz)'); set(gca,'YColor','k');
+ylabel('Bandwidth freed by NCRs (MHz)'); set(gca,'YColor','k');
 yyaxis right
-%only the high-demand tier is informative here: low/medium are already
-%served in full (flat), so NCRs add subscribers only at the high tier
-r = T.take_rate==takeRef & T.activity==actRef & strcmp(T.demand_profile,'high');
+%subscribers served at the binding (high) tier - the model default; lower
+%tiers, when present in a sensitivity campaign, are served in full (flat)
+r = refMask;
+if ismember('demand_profile',T.Properties.VariableNames)
+    r = r & strcmp(T.demand_profile,'high');
+end
 [x,o]=sort(T.num_rep(r)); y=T.mean_init_FWA(r); y=y(o);
 e=(T.std_init_FWA(r))./sqrt(T.GroupCount(r)); e=e(o); e(isnan(e))=0;
 hS=errorbar(x,y,e,'-s','LineWidth',1,'Color',tcol(1,:), ...
@@ -67,12 +83,12 @@ xlabel('Number of NCRs, $N_{\mathrm{rep}}$','Interpreter','latex');
 legend([hB;hS],{'Bandwidth freed','Subscribers served'},'Location','east','FontSize',7);
 styleIEEE(fig); saveIEEE(fig,plotDir,'Band_and_K_vs_num_NCR');
 
-%% Fig 4: packing safe-load fraction vs outage target (tier-invariant), 5% activity
+%% Fig 4: spectrum utilization vs outage target (tier-invariant), at actRef
 packingFile = fullfile(packDir,'packing_f_curves.csv');
 if isfile(packingFile)
     P = readtable(packingFile);
     if ismember('activity', P.Properties.VariableNames)
-        uap=unique(P.activity); [~,iap]=min(abs(uap-0.05)); P=P(P.activity==uap(iap),:);
+        uap=unique(P.activity); [~,iap]=min(abs(uap-actRef)); P=P(P.activity==uap(iap),:);
     end
     P = P(100*P.eps <= 10,:);   %truncate the outage axis to 1-10%
     fig=figure('Visible','off'); hold on; grid on; L={};
