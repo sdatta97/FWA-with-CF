@@ -8,8 +8,8 @@ set(0,'DefaultFigureVisible','off');
 %.eps/.png/.fig in plots/. Run combineData.m first.
 %Figures are drawn at the model's DEFAULT operating point (20% take,
 %10% activity, high demand tier); sensitivity campaigns that sweep those
-%axes are filtered back to the defaults via refMask. The freed bandwidth
-%is tier-invariant (set by the cellular phase before the FWA demand
+%axes are filtered back to the defaults via refMask. The available FWA
+%bandwidth is tier-invariant (set by the cellular phase before the FWA demand
 %loop); packing is tier-invariant and drawn once.
 repoRoot = fullfile(fileparts(mfilename('fullpath')),'..');
 %newest sweepNaming.m result folder whose summary carries the plot axes
@@ -49,13 +49,11 @@ if ismember('take_rate',T.Properties.VariableNames), refMask = refMask & T.take_
 if ismember('activity',T.Properties.VariableNames),  refMask = refMask & T.activity==actRef; end
 cSubs = [0 0.45 0.74]; %subscriber-series color
 
-%% Dual-axis figure at the fixed activity: bandwidth FREED BY the NCRs
-%(left, tier-invariant) and FWA subscribers served (right), vs the number
-%of NCRs. Error bars = +/-1 s.e. over seeds.
-%FREED bandwidth is the NCR-attributable RELIEF, Band_FWA(N) -
-%Band_FWA(0): the num_rep = 0 fallow band exists without any NCR, so the
-%freed curve starts at 0 by construction (the baseline s.e. is absorbed
-%into the delta; per-seed pairing is CRN so the subtraction is fair).
+%% Dual-axis figure at the fixed activity: TOTAL bandwidth available for
+%FWA use (left, tier-invariant) and FWA subscribers served (right), vs
+%the number of NCRs. Error bars = +/-1 s.e. over seeds. The N = 0 value
+%is the fallow band the cellular phase leaves without any NCR; the rise
+%above it is the NCR-attributable relief.
 fig=figure('Visible','off'); hold on; grid on;
 yyaxis left
 rB = refMask; %tier-invariant left axis
@@ -63,10 +61,9 @@ if ismember('demand_profile',T.Properties.VariableNames)
     rB = rB & strcmp(T.demand_profile,T.demand_profile{find(refMask,1)});
 end
 [xb,ob]=sort(T.num_rep(rB)); yb=T.mean_Band_FWA(rB)/1e6; yb=yb(ob);
-yb = yb - yb(xb==0); %relief over the no-NCR fallow baseline
 eb=(T.std_Band_FWA(rB)/1e6)./sqrt(T.GroupCount(rB)); eb=eb(ob); eb(isnan(eb))=0;
 hB=errorbar(xb,yb,eb,'-o','LineWidth',1.4,'Color','k','MarkerFaceColor','k','MarkerSize',4);
-ylabel('Bandwidth freed by NCRs (MHz)'); set(gca,'YColor','k');
+ylabel('Bandwidth available for FWA use (MHz)'); set(gca,'YColor','k');
 yyaxis right
 %subscribers served at the binding (high) tier - the model default; lower
 %tiers, when present in a sensitivity campaign, are served in full (flat)
@@ -80,7 +77,7 @@ hS=errorbar(x,y,e,'-s','LineWidth',1,'Color',cSubs, ...
     'MarkerFaceColor',cSubs,'MarkerSize',4);
 ylabel('FWA subscribers served'); set(gca,'YColor',cSubs);
 xlabel('Number of NCRs, $N_{\mathrm{rep}}$','Interpreter','latex');
-legend([hB;hS],{'Bandwidth freed','Subscribers served'},'Location','east','FontSize',7);
+legend([hB;hS],{'Bandwidth available','Subscribers served'},'Location','east','FontSize',7);
 styleIEEE(fig); saveIEEE(fig,plotDir,'Band_and_K_vs_num_NCR');
 
 %% Fig 4: spectrum utilization vs outage target (tier-invariant), at actRef
