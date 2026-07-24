@@ -697,7 +697,7 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         if ni ~= rIdx, continue; end                 %keep only the right cell (left = its mirror)
         if thinMode
             switch d.key %keep one in three of the crowd classes
-                case 'th',     cntApt = cntApt+1;   if mod(cntApt,3)~=1, continue; end
+                case 'th',     cntApt = cntApt+1;   if mod(cntApt,4)~=1, continue; end
                 case 'home',   cntHome = cntHome+1; if mod(cntHome,3)~=1, continue; end
                 case 'tree',   cntTree = cntTree+1; if mod(cntTree,3)~=1, continue; end
                 case 'person', cntPer = cntPer+1;   if mod(cntPer,3)~=1, continue; end
@@ -708,15 +708,38 @@ sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
         dR = d; dR.x = cR(1)+rel(1); dR.y = cR(2)+rel(2); Dn(end+1) = dR; %#ok<AGROW>
         dL = d; dL.x = cL(1)-rel(1); dL.y = cL(2)+rel(2); Dn(end+1) = dL; %#ok<AGROW> mirror across x=0
     end
-    %Pin the (single) office park to a clean display spot in thin mode:
-    %the random park azimuth can drop it behind the tower or under the
-    %legend row; the mechanism overlays need it toward the join-side
-    %cell edge (visual repositioning only, before the pair selector runs)
+    %Spread the kept townhouses evenly around their ring in thin mode: the
+    %random drop angles survive thinning as a clump against the gNB glyph;
+    %a deterministic ring (even azimuths, alternating radius, frontal arc
+    %kept clear of the tower base) reads cleanly (display only)
+    if thinMode
+        iTh = find(strcmp({Dn.key},'th'));
+        iThR = iTh([Dn(iTh).x] > 0); nTh = numel(iThR);
+        iThL = iTh([Dn(iTh).x] <= 0);
+        if nTh > 0
+            ang = deg2rad(linspace(36, 324, nTh));
+            rad = 140 + 25*mod(0:nTh-1,2);
+            for k = 1:nTh
+                Dn(iThR(k)).x = cR(1) + rad(k)*cos(ang(k));
+                Dn(iThR(k)).y = cR(2) + rad(k)*sin(ang(k));
+                if k <= numel(iThL)
+                    Dn(iThL(k)).x = cL(1) - rad(k)*cos(ang(k));
+                    Dn(iThL(k)).y = cL(2) + rad(k)*sin(ang(k));
+                end
+            end
+        end
+    end
+    %Pin the (single) office park to the OUTBOARD side of its cell in thin
+    %mode (the random park azimuth can drop it behind the tower or at the
+    %join): the NCR mechanism then points outward from the tower while the
+    %interference lobe points inward across the join - the two mechanisms
+    %separate by direction (visual repositioning only, before the pair
+    %selector runs)
     if thinMode
         iOf = find(strcmp({Dn.key},'office'));
         iR = iOf([Dn(iOf).x] > 0);
         if ~isempty(iR)
-            tgt = cR + [-300 -170];
+            tgt = cR + [430 -120];
             dx = tgt(1) - mean([Dn(iR).x]); dy = tgt(2) - mean([Dn(iR).y]);
             for k = iR, Dn(k).x = Dn(k).x + dx; Dn(k).y = Dn(k).y + dy; end
             iL = iOf([Dn(iOf).x] <= 0);   %mirrored copies move symmetrically

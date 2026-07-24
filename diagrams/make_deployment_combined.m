@@ -71,15 +71,13 @@ beamLobe(axMap, topL, [ox, roofY+16], 1.0, colRelay, 80);
 beamLobe(axMap, [ox, roofY+16], carPt, 1.0, colRelay, 60);
 
 %% --- CPE interference nulling, RIGHT cell ---
-%victim CPE: a dish-bearing building on the join-facing half of the right
-%cell, on the UPPER (far) side so both beams approach through open sky
-ib = find(roofs & xs > 280 & xs < Dx - 100);
-if isempty(ib), ib = find(roofs & xs > 280 & xs < Dx); end %thinned fallback
-if isempty(ib) %no dish-bearing host survived the display thinning: pick any
-               %building clear of the join clutter and draw its dish below
-    ib = find(ismember(keys,{'th','home','office'}) & xs > 280 & xs < Dx - 60);
-end
-[~,ii] = min(xs(ib)); b = D(ib(ii)); %nearest the join: longest, clearest links
+%victim CPE: the STRIP-MALL rooftop CPE at the join - equidistant from
+%both gNBs, so it hears the interfering site at full strength and the
+%receive null matters most (also the visually cleanest spot: both beams
+%converge on the cell boundary from opposite sides)
+ib = find(strcmp(keys,'mall'));
+[~,ii] = max([D(ib).roof]*10 - abs(xs(ib))); %prefer a dish-bearing central unit
+b = D(ib(ii));
 [bx,by] = prj(b.x,b.y); dishPt = [bx, by + b.H*1.04 + 19];
 if ~b.roof %give the chosen host its rooftop dish
     W = 38*ICO.cpe.asp;
