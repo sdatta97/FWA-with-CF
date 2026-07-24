@@ -846,7 +846,11 @@ end
                 %for the packing-analysis figure (dataProcess/combineData.m);
                 %the safe-load fraction f = q_eps/mean is bandwidth-scale-
                 %invariant, so these full-band rates suffice
-                packFolder = 'resultData/FWA_packing_analysis';
+                %packing/SE folders carry the _gIsite generation suffix
+                %like the results folders: the file tags (CPE/act/rep/seed)
+                %do not encode the interference model, so pre-site-aware
+                %matrices must never share a folder with these
+                packFolder = 'resultData/FWA_packing_analysis_gIsite';
                 if not(isfolder(packFolder))
                     mkdir(packFolder)
                 end
@@ -919,7 +923,7 @@ end
                         end
                         se_fwa_fb = sum(mean(rate_fb,2))/(Band*numCPE_tot);
                         se_cell_fb = sum(mean_rate_dl_cell)/(Band - Band_FWA)/(M_sectors*numUE);
-                        seDir = fullfile('resultData','FWA_SE_comparison');
+                        seDir = fullfile('resultData','FWA_SE_comparison_gIsite');
                         if not(isfolder(seDir)), mkdir(seDir), end
                         seFile = fullfile(seDir, strcat('se_comp_', ...
                             num2str(take_rate_arr(idxnumCPE)), '_', ...

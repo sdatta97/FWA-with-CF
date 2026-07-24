@@ -8,13 +8,13 @@ clear;
 %     combined into per-folder summary.csv/.txt with mean/std/median
 %     across seeds;
 %  2) raw packing matrices (per-user x per-(snapshot x realization)
-%     rates) in resultData/FWA_packing_analysis are reduced to the
+%     rates) in resultData/FWA_packing_analysis_gIsite are reduced to the
 %     spectrum-utilization curves f(eps) = q_eps(rate)/mean(rate) and
 %     stored in packing_f_curves.csv.
 %CSV-combining pattern adapted from
 %https://in.mathworks.com/matlabcentral/answers/538119
 repoRoot = fullfile(fileparts(mfilename('fullpath')),'..');
-packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis');
+packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis_gIsite');
 
 %% 1) Combine the sweep CSVs across seeds and summarize.
 %Result folders follow the sweepNaming.m convention: each
@@ -55,7 +55,7 @@ end
 %(the gross physical-layer contrast written by SimulationMain at
 %num_rep = 0: all UEs vs all CPEs, each on the whole band, no split, no
 %feasibility filtering)
-seDir = fullfile(repoRoot,'resultData','FWA_SE_comparison');
+seDir = fullfile(repoRoot,'resultData','FWA_SE_comparison_gIsite');
 seFiles = dir(fullfile(seDir,'se_comp_*.csv'));
 if ~isempty(seFiles)
     seT = cell(numel(seFiles),1);
