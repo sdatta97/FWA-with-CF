@@ -84,11 +84,14 @@ for k = 1:K_FWA
     end
 end
 
-%% per-antenna SINR terms and rates
-DS_FWA = zeros(K_FWA,N_CPE_FWA);
-MSI_FWA = zeros(K_FWA,N_CPE_FWA);
-MUI_FWA = zeros(K_FWA,N_CPE_FWA);
-HI_FWA = zeros(K_FWA,N_CPE_FWA);
+%% MIMO log-det rates
+%Shannon capacity of user k's N_CPE x N_CPE effective MIMO channel
+%G_k = D_FWA_FWA(k,k,:,:) under colored interference-plus-noise:
+%  rate_k = BW*prelog*log2 det(I + Kt*Kr*G_k' R_k^{-1} G_k),
+%R_k = sum_q!=k fac_q*Kt*Kr*G_kq G_kq' (spatial covariance of user q's
+%precoded streams at k's antennas, fac = site-aware gamma_I) + EVM
+%distortion (diagonal: per-antenna received power times (1-Kt*Kr),
+%uncorrelated-distortion convention) + noise.
 noise_FWA = abs(sqrt(0.5)*(randn(K_FWA,N_CPE_FWA) + 1j*randn(K_FWA,N_CPE_FWA))).^2;
 %site of each CPE's serving sector (sectors are numbered site-major:
 %params.locationsBS = kron(siteLocations, ones(S,1)))
@@ -98,36 +101,27 @@ servSite = zeros(K_FWA,1);
 for k = 1:K_FWA
     servSite(k) = ceil(Serv{k}(1)/S_site);
 end
-snr_num_FWA = zeros(K_FWA,N_CPE_FWA);
-snr_den_FWA = zeros(K_FWA,N_CPE_FWA);
 rate_dl = zeros(K_FWA,1);
 for k = 1:K_FWA
-    for n = 1:N_CPE_FWA
-        DS_FWA(k,n)  = Kr_FWA*Kt*(abs(D_FWA_FWA(k,k,n,n)))^2;
-        HI_FWA(k,n)  = (1-Kr_FWA*Kt)*(abs(D_FWA_FWA(k,k,n,n)))^2;
-        for nn = 1:N_CPE_FWA
-            if (abs(D_FWA_FWA(k,k,nn,nn))<abs(D_FWA_FWA(k,k,n,n)))
-                MSI_FWA(k,n) = MSI_FWA(k,n) + Kr_FWA*Kt*(abs(D_FWA_FWA(k,k,n,nn)))^2;
-                HI_FWA(k,n)  = HI_FWA(k,n)  + (1-Kr_FWA*Kt)*(abs(D_FWA_FWA(k,k,n,nn)))^2;
-            end
+    G = reshape(D_FWA_FWA(k,k,:,:),[N_CPE_FWA,N_CPE_FWA]); %rows = k's antennas, cols = k's streams
+    R = diag(noise_FWA(k,:));                %interference-plus-noise covariance
+    HIdiag = (1-Kr_FWA*Kt)*sum(abs(G).^2,2); %EVM distortion of the own signal
+    for q = 1:K_FWA
+        if (q~=k)
+            %gamma_I models the CPE's DIRECTIONAL receive null and so
+            %applies only to OTHER-SITE interferers: same-sector
+            %streams are already suppressed by the L-MMSE precoder
+            %(D_FWA_FWA carries the residual leakage), and co-site
+            %other-sector interference arrives from the serving mast's
+            %direction, inside the CPE's main receive lobe - neither
+            %can be nulled again at the CPE
+            if siteAware && servSite(q) == servSite(k), fac = 1; else, fac = SI_cancel_factor; end
+            Gq = reshape(D_FWA_FWA(k,q,:,:),[N_CPE_FWA,N_CPE_FWA]);
+            R = R + Kr_FWA*Kt*fac*(Gq*Gq');
+            HIdiag = HIdiag + (1-Kr_FWA*Kt)*fac*sum(abs(Gq).^2,2);
         end
-        for q = 1:K_FWA
-            if (q~=k)
-                %gamma_I models the CPE's DIRECTIONAL receive null and so
-                %applies only to OTHER-SITE interferers: same-sector
-                %streams are already suppressed by the L-MMSE precoder
-                %(D_FWA_FWA carries the residual leakage), and co-site
-                %other-sector interference arrives from the serving mast's
-                %direction, inside the CPE's main receive lobe - neither
-                %can be nulled again at the CPE
-                if siteAware && servSite(q) == servSite(k), fac = 1; else, fac = SI_cancel_factor; end
-                MUI_FWA(k,n) = MUI_FWA(k,n) + Kr_FWA*Kt*fac*norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
-                HI_FWA(k,n)  = HI_FWA(k,n)  + (1-Kr_FWA*Kt)*fac*norm(reshape(D_FWA_FWA(k,q,n,:),[1,N_CPE_FWA]))^2;
-            end
-        end
-        snr_num_FWA(k,n) = DS_FWA(k,n);
-        snr_den_FWA(k,n) = MSI_FWA(k,n) + MUI_FWA(k,n) + HI_FWA(k,n) + noise_FWA(k,n);
-        rate_dl(k) = rate_dl(k) + BW*TAU_FAC*log2(1+snr_num_FWA(k,n)/snr_den_FWA(k,n));
     end
+    R = R + diag(HIdiag);
+    rate_dl(k) = BW*TAU_FAC*logdet2(Kr_FWA*Kt*(G'*(R\G)));
 end
 end

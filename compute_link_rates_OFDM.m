@@ -34,18 +34,21 @@ sectorLoad = sum(D,2);
 %(matched filter per scheduled UE), built on
 %the ESTIMATED channels (imperfect CSI when params.IMPERFECT_CSI is set);
 %physical reception uses the true channels. The same matrices provide the
-%victim's own DS/MSI beams and the beamformed inter-sector interference,
+%victim's own stream beams and the beamformed inter-sector interference,
 %averaged over the interferer's scheduled set (round-robin OFDMA)
 W = cell(M_sectors,1);
 for m = 1:M_sectors
     W{m} = beamMatrix(channel_est_dl,m,U{m},N_BS,N_UE);
 end
 
-%% Computing rates
-DS_dl = zeros(K-K_FWA,N_UE);
-MSI_dl = zeros(K-K_FWA,N_UE);
-MCI_dl = zeros(K-K_FWA,N_UE);
-HI_dl = zeros(K-K_FWA,N_UE);
+%% Computing rates: MIMO log-det per UE
+%Shannon capacity of UE k's N_UE x N_UE effective channel A (receive
+%antennas x streams, streams beamformed per antenna) under colored
+%interference-plus-noise:
+%  rate_k = share*prelog*log2 det(I + Kt*Kr*A' R_k^{-1} A),
+%R_k = beamformed inter-sector interference as a spatial covariance
+%(averaged over the interferer's scheduled beams, round-robin OFDMA)
+%+ diagonal EVM distortion + noise.
 noise_dl = abs(sqrt(0.5)*(randn(K-K_FWA,N_UE) + 1j*randn(K-K_FWA,N_UE))).^2;
 rate_dl = zeros(K-K_FWA,1);
 for k = 1:K-K_FWA
@@ -53,34 +56,25 @@ for k = 1:K-K_FWA
     share = BW/sectorLoad(m);
     W_own = W{m}; U_own = U{m};
     int_sectors = setdiff(1:M_sectors,m); %reuse 1: every other sector interferes
+    H_own = reshape(channel_dl(m,k,:,1:N_UE),[N_BS,N_UE]); %columns = receive antennas
+    Wk = zeros(N_BS,N_UE); %the serving sector's beams for k's streams
     for n = 1:N_UE
-        h_n = reshape(channel_dl(m,k,:,n),N_BS,1);
-        ds_base = p_d*abs(h_n'*getBeam(W_own,U_own,k,n,N_UE))^2;
-        DS_dl(k,n) = Kr*Kt*ds_base;
-        HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*ds_base;
-        for nn = 1:N_UE
-            if (nn~=n)
-                h_nn = reshape(channel_dl(m,k,:,nn),N_BS,1);
-                if (h_nn'*h_nn < h_n'*h_n)
-                    msi_base = p_d*abs(h_n'*getBeam(W_own,U_own,k,nn,N_UE))^2;
-                    MSI_dl(k,n) = Kr*Kt*msi_base;
-                    HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*msi_base;
-                end
-            end
-        end
-        %inter-sector (co-channel) interference with the interferers'
-        %actual beamforming towards their own scheduled UEs
-        mci_base = 0;
-        for mm = int_sectors
-            if ~isempty(W{mm})
-                h_int = reshape(channel_dl(mm,k,:,n),N_BS,1);
-                mci_base = mci_base + p_d*mean(abs(h_int'*W{mm}).^2);
-            end
-        end
-        MCI_dl(k,n) = Kr*Kt*mci_base;
-        HI_dl(k,n) = HI_dl(k,n) + (1-Kr*Kt)*mci_base;
-        rate_dl(k) = rate_dl(k) + share*TAU_FAC(k)*log2(1+DS_dl(k,n)/(MSI_dl(k,n)+MCI_dl(k,n)+HI_dl(k,n)+noise_dl(k,n)));
+        Wk(:,n) = getBeam(W_own,U_own,k,n,N_UE);
     end
+    A = sqrt(p_d)*(H_own'*Wk); %A(nr,ns): stream ns as seen at antenna nr
+    %inter-sector (co-channel) interference with the interferers'
+    %actual beamforming towards their own scheduled UEs
+    R_mci = zeros(N_UE);
+    for mm = int_sectors
+        if ~isempty(W{mm})
+            H_int = reshape(channel_dl(mm,k,:,1:N_UE),[N_BS,N_UE]);
+            B = sqrt(p_d)*(H_int'*W{mm});
+            R_mci = R_mci + (B*B')/size(W{mm},2);
+        end
+    end
+    R = diag(noise_dl(k,:)) + Kr*Kt*R_mci ...
+      + diag((1-Kr*Kt)*(sum(abs(A).^2,2) + real(diag(R_mci))));
+    rate_dl(k) = share*TAU_FAC(k)*logdet2(Kr*Kt*(A'*(R\A)));
 end
 end
 
