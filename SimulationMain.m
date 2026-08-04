@@ -443,15 +443,21 @@ fwa_demand_configs = 1e6*[ 50    50    100    100];  %LOW demand profile
 %Register any new sweep axis in BOTH lists (and in currVals at the
 %writer) - the check_naming.m scratchpad script verifies consistency
 %without running the simulation.
+%'logdet' is a pure GENERATION MARKER, not a model switch: rates are the
+%MIMO log-det capacity since 8d957d9 (per-stream SINR before). It keys
+%the result folders (and the packing/SE folder suffixes below) so
+%log-det campaign files can never pool with per-stream-era data - the
+%file tags do not encode the rate model.
+logdet_generation = 1;
 sweepRegNames = {'take_rate','activity','num_rep','demand_profile', ...
     'rep_gain','SI_cancel','r_min_cell_Mbps','loss_pc','ISD_m','Band_MHz','HWI', ...
-    'rank','Krep','gate','contam','gIsite'};
+    'rank','Krep','gate','contam','gIsite','logdet'};
 sweepRegVals = {take_rate_arr, activity_arr, num_rep_arr, ...
     fwa_demand_names, params.repeat_gain, params.SI_cancel_dB, ...
     params.r_min_cell/1e6, params.loss_pc_cell, params.ISD, Band/1e6, params.HW_IMPAIRMENTS, ...
     params.ncr_rank, ...
     params.num_repeater_per_cpe, params.ncr_benefit_gate, params.fwa_pilot_contam, ...
-    params.gI_site_aware};
+    params.gI_site_aware, logdet_generation};
 naming = sweepNaming(sweepRegNames, sweepRegVals, aID);
 %a rerun of the same seed starts its table fresh (rows accumulate across
 %the sweep loops within one run, never across runs)
@@ -846,11 +852,11 @@ end
                 %for the packing-analysis figure (dataProcess/combineData.m);
                 %the safe-load fraction f = q_eps/mean is bandwidth-scale-
                 %invariant, so these full-band rates suffice
-                %packing/SE folders carry the _gIsite generation suffix
+                %packing/SE folders carry the _logdet generation suffix
                 %like the results folders: the file tags (CPE/act/rep/seed)
-                %do not encode the interference model, so pre-site-aware
-                %matrices must never share a folder with these
-                packFolder = 'resultData/FWA_packing_analysis_gIsite';
+                %do not encode the rate/interference model, so per-stream-
+                %era matrices must never share a folder with these
+                packFolder = 'resultData/FWA_packing_analysis_logdet';
                 if not(isfolder(packFolder))
                     mkdir(packFolder)
                 end
@@ -923,7 +929,7 @@ end
                         end
                         se_fwa_fb = sum(mean(rate_fb,2))/(Band*numCPE_tot);
                         se_cell_fb = sum(mean_rate_dl_cell)/(Band - Band_FWA)/(M_sectors*numUE);
-                        seDir = fullfile('resultData','FWA_SE_comparison_gIsite');
+                        seDir = fullfile('resultData','FWA_SE_comparison_logdet');
                         if not(isfolder(seDir)), mkdir(seDir), end
                         seFile = fullfile(seDir, strcat('se_comp_', ...
                             num2str(take_rate_arr(idxnumCPE)), '_', ...
@@ -973,7 +979,8 @@ end
                             params.SI_cancel_dB, params.r_min_cell/1e6, ...
                             params.loss_pc_cell, params.ISD, Band/1e6, params.HW_IMPAIRMENTS, ...
                             params.ncr_rank, params.num_repeater_per_cpe, ...
-                            params.ncr_benefit_gate, params.fwa_pilot_contam, params.gI_site_aware};
+                            params.ncr_benefit_gate, params.fwa_pilot_contam, params.gI_site_aware, ...
+                            logdet_generation};
                         fileID = fopen(resultFile,'a');
                         if writeHeader
                             fprintf(fileID, naming.header);

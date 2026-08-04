@@ -13,7 +13,7 @@ set(0,'DefaultFigureVisible','off');
 %loop); packing is tier-invariant and drawn once.
 repoRoot = fullfile(fileparts(mfilename('fullpath')),'..');
 %newest sweepNaming.m result folder whose summary carries the plot axes
-cdirs = dir(fullfile(repoRoot,'resultData','FWA_const_*'));
+cdirs = dir(fullfile(repoRoot,'resultData','FWA_const_*logdet')); %current generation only
 cdirs = cdirs([cdirs.isdir]);
 [~,ord] = sort([cdirs.datenum],'descend');
 sweepDir = '';
@@ -32,7 +32,7 @@ end
 if isempty(sweepDir)
     error('no FWA_const_* folder with a plottable summary.csv (run combineData first)');
 end
-packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis_gIsite');
+packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis_logdet');
 plotDir = fullfile(repoRoot,'plots');
 
 T = readtable(fullfile(sweepDir,'summary.csv'));
@@ -63,7 +63,7 @@ end
 [xb,ob]=sort(T.num_rep(rB)); yb=T.mean_Band_FWA(rB)/1e6; yb=yb(ob);
 eb=(T.std_Band_FWA(rB)/1e6)./sqrt(T.GroupCount(rB)); eb=eb(ob); eb(isnan(eb))=0;
 hB=errorbar(xb,yb,eb,'-o','LineWidth',1.4,'Color','k','MarkerFaceColor','k','MarkerSize',4);
-ylabel('Bandwidth available for FWA use (MHz)'); set(gca,'YColor','k');
+ylabel('Bandwidth available for FWA (MHz)'); set(gca,'YColor','k');
 yyaxis right
 %subscribers served at the LOW tier - the model default, where service is
 %band-limited and subscriber growth tracks the freed bandwidth ~1:1
