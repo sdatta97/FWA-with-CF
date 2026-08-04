@@ -57,10 +57,9 @@ Jakes channel aging), and 3GPP-compliant hardware impairments.
 - `submit.sbatch` — SLURM array entry point (one array task per random seed).
 
 **Figure generators**
-- `diagrams/make_deployment_3d.m` — deployment scene (2.5D icon map); also exports scene geometry.
-- `diagrams/make_deployment_combined.m` — the system-model figure: deployment scene with the NCR and interference-nulling mechanisms drawn in.
-- `diagrams/render_scene.py` — headless Blender render of the exported scene.
-- `diagrams/make_mechanism_figs.m` — standalone NCR-support and interference-nulling vignettes.
+- `diagrams/make_deployment_pptx.js` — the system-model deployment figure (NCR relay +
+  CPE interference nulling on a 2.5D icon map) as an editable PowerPoint slide;
+  output kept at `diagrams/deployment_model.pptx`. Icons: `diagrams/icons` (MDI, Apache-2.0).
 
 ## Running
 
@@ -78,19 +77,19 @@ matlab -batch "run('dataProcess/combineData.m')"     # after all tasks finish
 matlab -batch "run('dataProcess/plotData.m')"        # render figures
 ```
 
-Deployment and mechanism figures:
+Deployment figure (regenerate after editing the script; manual PowerPoint edits
+can be made directly in `diagrams/deployment_model.pptx`):
 
 ```bash
-matlab -batch "run('diagrams/make_deployment_3d.m')"
-/Applications/Blender.app/Contents/MacOS/Blender -b -P diagrams/render_scene.py   # optional
-matlab -batch "run('diagrams/make_mechanism_figs.m')"
+npm install pptxgenjs
+node diagrams/make_deployment_pptx.js diagrams/deployment_model.pptx
 ```
 
 ## Requirements
 
 - MATLAB R2025b (Communications and Statistics toolboxes)
 - SLURM for the multi-seed campaign
-- Blender (optional) for the photorealistic deployment render
+- Node.js + pptxgenjs for the deployment figure
 
 ## Citation
 
