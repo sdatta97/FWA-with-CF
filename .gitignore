@@ -1,0 +1,16 @@
+# Raw per-seed simulation output: regenerate by rerunning the campaign
+# (submit.sbatch on the cluster), then combineData.m. Only the reduced
+# summaries below are tracked - they are the provenance of the figures.
+resultData/**
+!resultData/
+!resultData/*/
+!resultData/*/summary.csv
+!resultData/*/summary.txt
+!resultData/*/packing_f_curves.csv
+!resultData/*/se_comparison_summary.csv
+
+# macOS / editor / agent-session cruft
+.DS_Store
+.claude/
+node_modules/
+~$*

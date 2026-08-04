@@ -1,0 +1,4 @@
+num_rep,demand_profile,GroupCount,mean_numCPE,std_numCPE,median_numCPE,mean_init_FWA,std_init_FWA,median_init_FWA,mean_max_FWA,std_max_FWA,median_max_FWA,mean_Band_FWA,std_Band_FWA,median_Band_FWA,mean_cell_se,std_cell_se,median_cell_se,mean_FWA_se,std_FWA_se,median_FWA_se
+0,high,1,66,0,66,121,0,121,121,0,121,35577305.592748,0,35577305.592748,80.922654,0,80.922654,23.39498,0,23.39498
+0,low,1,66,0,66,132,0,132,132,0,132,35577305.592748,0,35577305.592748,80.922654,0,80.922654,21.710591,0,21.710591
+0,medium,1,66,0,66,132,0,132,132,0,132,35577305.592748,0,35577305.592748,80.922654,0,80.922654,15.583869,0,15.583869

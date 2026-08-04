@@ -1,0 +1,2 @@
+lambdaBS,lambdaSC,numCPE,lambdaUE,deployRange,GroupCount,mean_max_pow_fac,std_max_pow_fac,median_max_pow_fac,mean_max_FWA,std_max_FWA,median_max_FWA,mean_max_cell_util,std_max_cell_util,median_max_cell_util,mean_max_FWA_util,std_max_FWA_util,median_max_FWA_util
+5,20,50,200,200,99,3.34343434343434,2.3996667122392,5,13.2323232323232,4.70090803826778,10,25.4103869998326,0.070829284446835,25.4348380405119,11.4747474747475,2.45923264265143,10

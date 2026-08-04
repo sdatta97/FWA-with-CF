@@ -1,0 +1,2 @@
+lambdaBS,numCPE,lambdaUE,deployRange,GroupCount,mean_mean_rate_FWA,std_mean_rate_FWA,median_mean_rate_FWA,mean_mean_rate_cell,std_mean_rate_cell,median_mean_rate_cell
+20,40,100,200,99,26682448.9294287,25760655.8021256,20375608.329296,21500850.5953106,11523492.5387779,26444632.917232
