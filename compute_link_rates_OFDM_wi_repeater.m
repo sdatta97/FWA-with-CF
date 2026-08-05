@@ -234,7 +234,10 @@ for k = 1:K-K_FWA
         Wk_dir(:,n) = getBeam(W_dir_own,U_own,k,n,N_UE);
     end
     H_dir = reshape(channel_dl(m,k,:,1:N_UE),[N_BS,N_UE]); %columns = receive antennas
-    A_off = sqrt(p_d)*(H_dir'*Wk_dir);
+    %Per-sector radiated-power constraint: p_d TOTAL on the subband, split
+    %evenly over the N_UE unit-norm stream beams (matching the /(|U_m|*N_UE)
+    %divisor in the interference averages)
+    A_off = sqrt(p_d/N_UE)*(H_dir'*Wk_dir);
     R_mci_off = zeros(N_UE);
     for mm = int_sectors
         if ~isempty(W{mm})
@@ -264,8 +267,8 @@ for k = 1:K-K_FWA
             Wk_comp(:,n) = getBeam(W_own,U_own,k,n,N_UE);
         end
         H_rep_k = reshape(H_rep(m,k,:,1:N_UE),[N_BS,N_UE]);
-        A_sig = sqrt(p_d)*((H_dir + sqrt(K_rep_hw)*H_rep_k)'*Wk_comp);
-        A_rep = sqrt(p_d)*(H_rep_k'*Wk_comp);
+        A_sig = sqrt(p_d/N_UE)*((H_dir + sqrt(K_rep_hw)*H_rep_k)'*Wk_comp);
+        A_rep = sqrt(p_d/N_UE)*(H_rep_k'*Wk_comp);
         %inter-sector interference with the interferers' actual
         %beamforming; the victim's interference channel includes its
         %repeater re-amplifying the interfering sector's signal

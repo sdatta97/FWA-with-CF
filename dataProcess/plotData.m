@@ -13,7 +13,7 @@ set(0,'DefaultFigureVisible','off');
 %loop); packing is tier-invariant and drawn once.
 repoRoot = fullfile(fileparts(mfilename('fullpath')),'..');
 %newest sweepNaming.m result folder whose summary carries the plot axes
-cdirs = dir(fullfile(repoRoot,'resultData','FWA_const_*logdet')); %current generation only
+cdirs = dir(fullfile(repoRoot,'resultData','FWA_const_*pnorm')); %current generation only
 cdirs = cdirs([cdirs.isdir]);
 [~,ord] = sort([cdirs.datenum],'descend');
 sweepDir = '';
@@ -32,7 +32,7 @@ end
 if isempty(sweepDir)
     error('no FWA_const_* folder with a plottable summary.csv (run combineData first)');
 end
-packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis_logdet');
+packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis_pnorm');
 plotDir = fullfile(repoRoot,'plots');
 
 T = readtable(fullfile(sweepDir,'summary.csv'));

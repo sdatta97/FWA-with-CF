@@ -8,13 +8,13 @@ clear;
 %     combined into per-folder summary.csv/.txt with mean/std/median
 %     across seeds;
 %  2) raw packing matrices (per-user x per-(snapshot x realization)
-%     rates) in resultData/FWA_packing_analysis_logdet are reduced to the
+%     rates) in resultData/FWA_packing_analysis_pnorm are reduced to the
 %     spectrum-utilization curves f(eps) = q_eps(rate)/mean(rate) and
 %     stored in packing_f_curves.csv.
 %CSV-combining pattern adapted from
 %https://in.mathworks.com/matlabcentral/answers/538119
 repoRoot = fullfile(fileparts(mfilename('fullpath')),'..');
-packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis_logdet');
+packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis_pnorm');
 
 %% 1) Combine the sweep CSVs across seeds and summarize.
 %Result folders follow the sweepNaming.m convention: each
@@ -24,10 +24,10 @@ packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis_logdet');
 %keys are ALL non-outcome columns, so the aggregation adapts to
 %whatever axes were swept.
 outcomeVars = {'numCPE','numUE','init_FWA','Band_FWA','cell_se_ue','FWA_se'};
-%only the current generation ('logdet' is the last registered naming
-%constant, so its folders end in _logdet): older-generation folders in
+%only the current generation ('pnorm' is the last registered naming
+%constant, so its folders end in _pnorm): older-generation folders in
 %resultData must never pool into the summaries
-constDirs = dir(fullfile(repoRoot,'resultData','FWA_const_*logdet'));
+constDirs = dir(fullfile(repoRoot,'resultData','FWA_const_*pnorm'));
 constDirs = constDirs([constDirs.isdir]);
 for cd_i = 1:numel(constDirs)
     thisDir = fullfile(constDirs(cd_i).folder, constDirs(cd_i).name);
@@ -58,7 +58,7 @@ end
 %(the gross physical-layer contrast written by SimulationMain at
 %num_rep = 0: all UEs vs all CPEs, each on the whole band, no split, no
 %feasibility filtering)
-seDir = fullfile(repoRoot,'resultData','FWA_SE_comparison_logdet');
+seDir = fullfile(repoRoot,'resultData','FWA_SE_comparison_pnorm');
 seFiles = dir(fullfile(seDir,'se_comp_*.csv'));
 if ~isempty(seFiles)
     seT = cell(numel(seFiles),1);

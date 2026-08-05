@@ -61,7 +61,11 @@ for k = 1:K-K_FWA
     for n = 1:N_UE
         Wk(:,n) = getBeam(W_own,U_own,k,n,N_UE);
     end
-    A = sqrt(p_d)*(H_own'*Wk); %A(nr,ns): stream ns as seen at antenna nr
+    %Per-sector radiated-power constraint: on this UE's subband the sector
+    %radiates p_d TOTAL, split evenly over the N_UE unit-norm stream beams
+    %(the interference average below already implies the same p_d/N_UE
+    %per-stream convention via its /(|U_m|*N_UE) divisor)
+    A = sqrt(p_d/N_UE)*(H_own'*Wk); %A(nr,ns): stream ns as seen at antenna nr
     %inter-sector (co-channel) interference with the interferers'
     %actual beamforming towards their own scheduled UEs
     R_mci = zeros(N_UE);

@@ -58,6 +58,10 @@ for m = 1:M_sectors
         end
     end
 end
+%Per-sector radiated-power constraint: eta_eq scales the precoders so
+%sector m's TOTAL power over all served CPEs and streams is p_d
+%(sum_q p_d*eta_eq(m,q)*trace(P_q P_q') = p_d by construction), the
+%MU-MIMO counterpart of the cellular p_d/N_UE per-stream split
 eta_eq = zeros(M_sectors,K_FWA);
 for m = 1:M_sectors
     term = 0;
