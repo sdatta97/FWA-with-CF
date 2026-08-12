@@ -9,6 +9,11 @@
 //     beam is weak/stale (grey, dies at the x);
 //   - the desired FWA beam to the cell-edge CPE and the other-site
 //     interference the CPE array nulls (red, dies at the x).
+// Both cells carry FWA: site 1 serves an in-cell CPE while ALSO hosting the
+// NCR, so the two capacity mechanisms coexist under one gNB. The top-left
+// inset states the frequency plan qualitatively - cellular UEs and FWA CPEs
+// sit on disjoint OFDMA sub-bands, so the two services never interfere with
+// each other and only the co-channel terms drawn here remain.
 //
 //   npm install pptxgenjs
 //   node diagrams/make_deployment_pptx.js diagrams/deployment_model.pptx
@@ -81,6 +86,7 @@ const TOP1 = [3.43, 1.66], TOP2 = [9.90, 1.66]; // antenna heads (beam origins)
 const UE = [1.30, 3.95];                       // in-car UE, cell edge
 const NCR = [2.18, 1.72];                      // NCR unit on the office roof
 const CPE = [6.66, 1.98];                      // rooftop CPE dish at the boundary
+const CPE1 = [5.25, 3.25];                     // in-cell CPE, served by site 1
 
 [G1, G2].forEach(function (g) {
   sl.addShape(pres.ShapeType.ellipse, { x: g[0] - RX, y: g[1] - RY, w: 2 * RX, h: 2 * RY,
@@ -90,9 +96,9 @@ const CPE = [6.66, 1.98];                      // rooftop CPE dish at the bounda
 // background scenery (far objects first), spread over the taller ground
 icon("tree", 0.72, 2.95, 0.50);
 icon("home", 2.45, 4.40, 0.52);
-icon("th", 4.60, 3.55, 0.58);
-icon("person", 4.18, 3.15, 0.40);
-icon("th", 5.45, 4.12, 0.58);
+icon("th", 4.45, 3.70, 0.58);
+icon("person", 4.10, 3.20, 0.40);
+icon("th", 3.60, 4.50, 0.58);
 icon("person", 7.60, 4.10, 0.40);
 icon("th", 8.15, 3.60, 0.58);
 icon("home", 11.05, 3.42, 0.52);
@@ -113,6 +119,9 @@ beam(TOP2, CPE, 0.90, C.beam, 0.17, 55);         // desired FWA beam
 beam(TOP1, CPE, 0.60, C.intf, 0.17, 58);         // other-site interference
 xMark([5.62, 1.82], 0.11, C.intf);
 
+/* ---------- FWA also served in cell 1, alongside the NCR ---------- */
+beam(TOP1, CPE1, 0.86, C.beam, 0.15, 55);
+
 /* ---------- foreground actors, drawn over the beams ---------- */
 icon("gnb", G1[0], G1[1] + 0.35, 1.75);
 icon("gnb", G2[0], G2[1] + 0.35, 1.75);
@@ -121,6 +130,8 @@ sl.addShape(pres.ShapeType.rect, { x: 2.00, y: 1.62, w: 0.36, h: 0.18,
   fill: { color: C.ncr }, line: { type: "none" } });
 icon("office", 6.66, 2.75, 0.72);                                     // CPE host
 icon("cpe", 6.66, 2.06, 0.42);
+icon("th", CPE1[0], 3.95, 0.58);                          // in-cell CPE host
+icon("cpe", CPE1[0], 3.40, 0.36);
 icon("car", UE[0], 4.13, 0.38);
 
 /* ---------- labels (the user's edited set) ---------- */
@@ -140,6 +151,24 @@ txt("other-site interference (nulled)", { x: 2.95, y: 1.10, w: 2.60, h: 0.24,
   fontSize: 12, align: "center" });
 txt("desired FWA beam", { x: 7.90, y: 1.14, w: 1.75, h: 0.24, fontSize: 12,
   align: "center" });
+txt("FWA CPE", { x: 4.65, y: 4.00, w: 1.20, h: 0.22, fontSize: 12, bold: true,
+  align: "center" });
+
+/* ---------- frequency-plan inset: the two services never overlap ---------- */
+txt("Orthogonal OFDMA sub-bands", { x: 0.30, y: 0.26, w: 2.20, h: 0.22,
+  fontSize: 11, bold: true, align: "center" });
+sl.addShape(pres.ShapeType.rect, { x: 0.40, y: 0.54, w: 0.92, h: 0.21,
+  fill: { color: "3A4750" }, line: { color: C.ink, width: 0.5 } });
+sl.addShape(pres.ShapeType.rect, { x: 1.38, y: 0.54, w: 1.02, h: 0.21,
+  fill: { color: C.beam }, line: { color: C.ink, width: 0.5 } });
+txt("cellular UEs", { x: 0.28, y: 0.77, w: 1.16, h: 0.20, fontSize: 9.5,
+  align: "center" });
+txt("FWA CPEs", { x: 1.33, y: 0.77, w: 1.12, h: 0.20, fontSize: 9.5,
+  align: "center" });
+sl.addShape(pres.ShapeType.line, { x: 0.40, y: 1.05, w: 2.00, h: 0,
+  line: { color: C.ink, width: 0.75, endArrowType: "triangle" } });
+txt("frequency", { x: 0.40, y: 1.07, w: 2.00, h: 0.20, fontSize: 9.5,
+  align: "center", italic: true });
 
 /* ---------- icon legend ---------- */
 [["gnb", "gNB site"], ["th", "Townhouse"], ["home", "Single-family home"],
