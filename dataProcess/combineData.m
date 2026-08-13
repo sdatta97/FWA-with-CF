@@ -67,8 +67,7 @@ end
 %folder one ROW per operating point: the take rate and activity are
 %carried in the file name (se_comp_<take>_<activity>_<seed>.csv), so a
 %take-rate campaign yields the SE multiple as a curve rather than a
-%single pooled mean. numCPE/numUE come along as the terminal counts,
-%which is what turns the per-terminal multiple into a per-sector one.
+%single pooled mean.
 seDirs = dir(fullfile(repoRoot,'resultData','FWA_SE_comparison_pnorm*'));
 seDirs = seDirs([seDirs.isdir]);
 for sd_i = 1:numel(seDirs)
@@ -81,25 +80,13 @@ for sd_i = 1:numel(seDirs)
         tok = regexp(seFiles(f).name,'se_comp_([\d.]+)_([\d.]+)_','tokens','once');
         t.take_rate = repmat(str2double(tok{1}), height(t), 1);
         t.activity  = repmat(str2double(tok{2}), height(t), 1);
-        %M_sectors was added to the schema later; older files predate it
-        if ~ismember('M_sectors', t.Properties.VariableNames)
-            t.M_sectors = nan(height(t),1);
-        end
         seT{f} = t;
     end
     seAll = vertcat(seT{:});
-    %PER-SECTOR (load-invariant) view, formed PER SEED before averaging:
-    %the terminal counts vary drop to drop, so the mean of the product is
-    %not the product of the means, and only the per-seed form has a
-    %meaningful spread to put an error bar on
-    seAll.se_fwa_sector  = seAll.se_fwa_cpe .* seAll.numCPE ./ seAll.M_sectors;
-    seAll.se_cell_sector = seAll.se_cell_ue .* seAll.numUE  ./ seAll.M_sectors;
     seSum = groupsummary(seAll, {'take_rate','activity'}, {'mean','median','std'}, ...
-        {'numCPE','numUE','se_cell_ue','se_fwa_cpe','multiple', ...
-         'se_fwa_sector','se_cell_sector'});
-    %standard errors, per operating point
-    seSum.se_multiple      = seSum.std_multiple      ./ sqrt(seSum.GroupCount);
-    seSum.se_fwa_sector_se = seSum.std_se_fwa_sector ./ sqrt(seSum.GroupCount);
+        {'numCPE','numUE','se_cell_ue','se_fwa_cpe','multiple'});
+    %standard error of the multiple, per operating point
+    seSum.se_multiple = seSum.std_multiple ./ sqrt(seSum.GroupCount);
     writetable(seSum, fullfile(seDir,'se_comparison_summary.csv'));
     for r = 1:height(seSum)
         fprintf(['full-band SE [%s] take %.2f act %.2f (%d seeds): cell %.2f vs FWA %.2f ' ...

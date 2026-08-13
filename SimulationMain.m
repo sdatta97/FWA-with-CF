@@ -398,7 +398,7 @@ params.num_repeater_per_cpe = 1; %NCRs attached per assisted user (single
 %CONTENT tags only, and combineData reduces the packing set at
 %min(numCPE) - so a take-rate campaign dropped into the NCR campaign's
 %packing folder would silently retag the packing curve to the smallest
-%take rate. params.campaign keeps them apart.
+%take rate. campaignSuffix keeps them apart.
 %  'ncr'      headline campaign: NCR sweep at the default take rate.
 %             Feeds Band_and_K_vs_num_NCR + packing_analysis + the
 %             single-point SE number. Untagged folders (back-compatible).
@@ -414,15 +414,14 @@ if isempty(CAMPAIGN), CAMPAIGN = 'ncr'; end
 fprintf('CAMPAIGN = %s\n', CAMPAIGN);
 switch CAMPAIGN
     case 'ncr'
-        params.campaign = '';
+        campaignSuffix = '';
     case 'takerate'
         take_rate_arr = 0.05:0.05:0.20; %documented sensitivity bracket (see above)
         num_rep_arr = 0;                %SE comparison is written at num_rep = 0 only
-        params.campaign = 'takerate';
+        campaignSuffix = '_takerate';
     otherwise
         error('unknown CAMPAIGN "%s"', CAMPAIGN);
 end
-campaignSuffix = ''; if ~isempty(params.campaign), campaignSuffix = ['_' params.campaign]; end
 %Three layers of randomness, averaged per SLURM array task:
 %  (1) the seed aID fixes the DROP: gNB/CPE/UE locations and the initial
 %      large-scale state;
@@ -973,13 +972,9 @@ end
                             num2str(take_rate_arr(idxnumCPE)), '_', ...
                             num2str(activity_arr(idxActivity)), '_', aID, '.csv'));
                         fid_se = fopen(seFile,'w');
-                        %M_sectors is recorded so the per-terminal SEs can be
-                        %turned into per-SECTOR ones downstream (the
-                        %load-invariant view), per seed rather than from
-                        %group means - the terminal counts vary drop to drop
-                        fprintf(fid_se, 'numCPE,numUE,M_sectors,se_cell_ue,se_fwa_cpe,multiple\n');
-                        fprintf(fid_se, '%d,%d,%d,%f,%f,%f\n', numCPE_tot, M_sectors*numUE, ...
-                            M_sectors, se_cell_fb, se_fwa_fb, se_fwa_fb/se_cell_fb);
+                        fprintf(fid_se, 'numCPE,numUE,se_cell_ue,se_fwa_cpe,multiple\n');
+                        fprintf(fid_se, '%d,%d,%f,%f,%f\n', numCPE_tot, M_sectors*numUE, ...
+                            se_cell_fb, se_fwa_fb, se_fwa_fb/se_cell_fb);
                         fclose(fid_se);
                     end
                     for idxrmin = 1:size(fwa_demand_configs,1)

@@ -102,30 +102,26 @@ else
 end
 
 %% Fig 5: per-terminal SE vs FWA take rate (CAMPAIGN = 'takerate')
-%What ONE terminal of each service gets, on a single axis. The FWA curve
-%falls as the take rate rises: a sector's transmit power and spatial
-%dimensions are shared by more CPEs at once (MU-MIMO), so each CPE's
-%share shrinks. The cellular side never sees the FWA take rate - the two
-%services are on orthogonal sub-bands - so it is drawn as the constant
-%reference it measures out to be, and doubles as this sweep's control.
-%Log y: the vertical gap between the two IS the SE multiple.
+%What ONE terminal of each service gets. The FWA curve falls as the take
+%rate rises: a sector's transmit power and spatial dimensions are shared
+%by more CPEs at once (MU-MIMO), so each CPE's share shrinks. The
+%cellular side never sees the FWA take rate - the two services are on
+%orthogonal sub-bands - so it is drawn as the constant reference it
+%measures out to be, and doubles as this sweep's control.
 seTakeFile = fullfile(repoRoot,'resultData','FWA_SE_comparison_pnorm_takerate', ...
     'se_comparison_summary.csv');
 if isfile(seTakeFile)
     S = sortrows(readtable(seTakeFile),'take_rate');
     if height(S) > 1
         x = 100*S.take_rate;
+        xl = [min(x) max(x)];
         fig=figure('Visible','off'); hold on; grid on;
         eF = S.std_se_fwa_cpe ./ sqrt(S.GroupCount); eF(isnan(eF)) = 0;
         hF = errorbar(x, S.mean_se_fwa_cpe, eF, '-o', 'LineWidth',1.4, ...
             'Color',cSubs,'MarkerFaceColor',cSubs,'MarkerSize',4);
-        %cellular: flat in the take rate by construction, so one constant
-        %line rather than a series (measured spread across the swept
-        %points is reported below for the caption)
         cellRef = mean(S.mean_se_cell_ue);
-        xl = [min(x)-1 max(x)+1];
-        hC = plot(xl, [cellRef cellRef], '--', 'LineWidth',1.2, 'Color','k');
-        set(gca,'YScale','log'); xlim(xl);
+        hC = plot(xl, [cellRef cellRef], '-', 'LineWidth',1.2, 'Color','k');
+        xlim(xl); xticks(x);
         xlabel('FWA take rate (\%)','Interpreter','latex');
         ylabel('Per-terminal SE (b/s/Hz)');
         legend([hF;hC],{'FWA CPE','Cellular UE'},'Location','northeast','FontSize',7);
