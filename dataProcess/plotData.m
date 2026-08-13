@@ -101,34 +101,39 @@ else
     fprintf('%s not found - run combineData first\n', packingFile);
 end
 
-%% Fig 5: SE multiple vs FWA take rate (CAMPAIGN = 'takerate')
-%Two views of the same runs. LEFT: the per-terminal multiple, which falls
-%steeply with take rate because a CPE's share of the sector's power and
-%spatial dimensions shrinks as more CPEs are served on the shared band.
-%RIGHT: the per-sector FWA throughput, which rises and then turns over
-%once the served streams (CPEs/sector x N_CPE) outgrow the BS array - the
-%MU-MIMO saturation knee. The cellular side is untouched by FWA take
-%rate, so it is the built-in control (flat) rather than a plotted series.
+%% Fig 5: per-terminal SE vs FWA take rate (CAMPAIGN = 'takerate')
+%What ONE terminal of each service gets, on a single axis. The FWA curve
+%falls as the take rate rises: a sector's transmit power and spatial
+%dimensions are shared by more CPEs at once (MU-MIMO), so each CPE's
+%share shrinks. The cellular side never sees the FWA take rate - the two
+%services are on orthogonal sub-bands - so it is drawn as the constant
+%reference it measures out to be, and doubles as this sweep's control.
+%Log y: the vertical gap between the two IS the SE multiple.
 seTakeFile = fullfile(repoRoot,'resultData','FWA_SE_comparison_pnorm_takerate', ...
     'se_comparison_summary.csv');
 if isfile(seTakeFile)
     S = sortrows(readtable(seTakeFile),'take_rate');
     if height(S) > 1
+        x = 100*S.take_rate;
         fig=figure('Visible','off'); hold on; grid on;
-        yyaxis left
-        e = S.se_multiple; e(isnan(e)) = 0;   %single-seed points have no spread
-        hM = errorbar(100*S.take_rate, S.mean_multiple, e, '-o', 'LineWidth',1.4, ...
-            'Color','k','MarkerFaceColor','k','MarkerSize',4);
-        ylabel('FWA-to-cellular SE multiple'); set(gca,'YColor','k');
-        yyaxis right
-        ea = S.se_fwa_sector_se; ea(isnan(ea)) = 0;
-        hA = errorbar(100*S.take_rate, S.mean_se_fwa_sector, ea, '-s', 'LineWidth',1, ...
+        eF = S.std_se_fwa_cpe ./ sqrt(S.GroupCount); eF(isnan(eF)) = 0;
+        hF = errorbar(x, S.mean_se_fwa_cpe, eF, '-o', 'LineWidth',1.4, ...
             'Color',cSubs,'MarkerFaceColor',cSubs,'MarkerSize',4);
-        ylabel('FWA SE per sector (b/s/Hz)'); set(gca,'YColor',cSubs);
+        %cellular: flat in the take rate by construction, so one constant
+        %line rather than a series (measured spread across the swept
+        %points is reported below for the caption)
+        cellRef = mean(S.mean_se_cell_ue);
+        xl = [min(x)-1 max(x)+1];
+        hC = plot(xl, [cellRef cellRef], '--', 'LineWidth',1.2, 'Color','k');
+        set(gca,'YScale','log'); xlim(xl);
         xlabel('FWA take rate (\%)','Interpreter','latex');
-        legend([hM;hA],{'Per-terminal multiple','Per-sector FWA SE'}, ...
-            'Location','northeast','FontSize',7);
-        styleIEEE(fig); saveIEEE(fig,plotDir,'SE_multiple_vs_take_rate');
+        ylabel('Per-terminal SE (b/s/Hz)');
+        legend([hF;hC],{'FWA CPE','Cellular UE'},'Location','northeast','FontSize',7);
+        styleIEEE(fig); saveIEEE(fig,plotDir,'SE_per_terminal_vs_take_rate');
+        fprintf(['per-terminal SE figure: cellular reference %.3f b/s/Hz ' ...
+                 '(measured %.3f-%.3f across the swept take rates, %.1f%% spread)\n'], ...
+            cellRef, min(S.mean_se_cell_ue), max(S.mean_se_cell_ue), ...
+            100*(max(S.mean_se_cell_ue)-min(S.mean_se_cell_ue))/cellRef);
     end
 else
     fprintf('%s not found - run the CAMPAIGN = ''takerate'' sweep first\n', seTakeFile);
