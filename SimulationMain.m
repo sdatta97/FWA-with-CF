@@ -973,9 +973,13 @@ end
                             num2str(take_rate_arr(idxnumCPE)), '_', ...
                             num2str(activity_arr(idxActivity)), '_', aID, '.csv'));
                         fid_se = fopen(seFile,'w');
-                        fprintf(fid_se, 'numCPE,numUE,se_cell_ue,se_fwa_cpe,multiple\n');
-                        fprintf(fid_se, '%d,%d,%f,%f,%f\n', numCPE_tot, M_sectors*numUE, ...
-                            se_cell_fb, se_fwa_fb, se_fwa_fb/se_cell_fb);
+                        %M_sectors is recorded so the per-terminal SEs can be
+                        %turned into per-SECTOR ones downstream (the
+                        %load-invariant view), per seed rather than from
+                        %group means - the terminal counts vary drop to drop
+                        fprintf(fid_se, 'numCPE,numUE,M_sectors,se_cell_ue,se_fwa_cpe,multiple\n');
+                        fprintf(fid_se, '%d,%d,%d,%f,%f,%f\n', numCPE_tot, M_sectors*numUE, ...
+                            M_sectors, se_cell_fb, se_fwa_fb, se_fwa_fb/se_cell_fb);
                         fclose(fid_se);
                     end
                     for idxrmin = 1:size(fwa_demand_configs,1)

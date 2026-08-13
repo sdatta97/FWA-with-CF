@@ -114,17 +114,16 @@ seTakeFile = fullfile(repoRoot,'resultData','FWA_SE_comparison_pnorm_takerate', 
 if isfile(seTakeFile)
     S = sortrows(readtable(seTakeFile),'take_rate');
     if height(S) > 1
-        M_sectors = 6; %2 sites x 3 sectors (params.M_sites, sectors_per_site)
         fig=figure('Visible','off'); hold on; grid on;
         yyaxis left
-        e = S.se_multiple; e(isnan(e)) = 0;
+        e = S.se_multiple; e(isnan(e)) = 0;   %single-seed points have no spread
         hM = errorbar(100*S.take_rate, S.mean_multiple, e, '-o', 'LineWidth',1.4, ...
             'Color','k','MarkerFaceColor','k','MarkerSize',4);
         ylabel('FWA-to-cellular SE multiple'); set(gca,'YColor','k');
         yyaxis right
-        aggFWA = S.mean_se_fwa_cpe .* S.mean_numCPE / M_sectors;
-        hA = plot(100*S.take_rate, aggFWA, '-s', 'LineWidth',1, 'Color',cSubs, ...
-            'MarkerFaceColor',cSubs,'MarkerSize',4);
+        ea = S.se_fwa_sector_se; ea(isnan(ea)) = 0;
+        hA = errorbar(100*S.take_rate, S.mean_se_fwa_sector, ea, '-s', 'LineWidth',1, ...
+            'Color',cSubs,'MarkerFaceColor',cSubs,'MarkerSize',4);
         ylabel('FWA SE per sector (b/s/Hz)'); set(gca,'YColor',cSubs);
         xlabel('FWA take rate (\%)','Interpreter','latex');
         legend([hM;hA],{'Per-terminal multiple','Per-sector FWA SE'}, ...
