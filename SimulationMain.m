@@ -390,6 +390,39 @@ params.num_repeater_per_cpe = 1; %NCRs attached per assisted user (single
                                  %rank-1 amplify-and-forward branch; 2 restores
                                  %the UE's second spatial stream via two
                                  %independent branches)
+%% CAMPAIGN SELECTOR - which sweep this SLURM array runs.
+%Set ONE string; it overrides the sweep axes above and tags the output
+%folders so campaigns can never pool with each other. The sweep-result
+%folder is already isolated by sweepNaming (different swept axes ->
+%different folder name), but the packing and SE folders are keyed by
+%CONTENT tags only, and combineData reduces the packing set at
+%min(numCPE) - so a take-rate campaign dropped into the NCR campaign's
+%packing folder would silently retag the packing curve to the smallest
+%take rate. params.campaign keeps them apart.
+%  'ncr'      headline campaign: NCR sweep at the default take rate.
+%             Feeds Band_and_K_vs_num_NCR + packing_analysis + the
+%             single-point SE number. Untagged folders (back-compatible).
+%  'takerate' FWA take-rate sensitivity at num_rep = 0 - the SE multiple
+%             vs subscriber density. The SE block only runs at
+%             num_rep = 0, so this is ~13x cheaper per seed.
+%Read from the environment so a SLURM job picks the campaign without
+%editing (and committing) a source change:
+%  sbatch --array=0-99 submit.sbatch                              (ncr)
+%  sbatch --export=ALL,FWA_CAMPAIGN=takerate --array=0-24 submit.sbatch
+CAMPAIGN = getenv('FWA_CAMPAIGN');
+if isempty(CAMPAIGN), CAMPAIGN = 'ncr'; end
+fprintf('CAMPAIGN = %s\n', CAMPAIGN);
+switch CAMPAIGN
+    case 'ncr'
+        params.campaign = '';
+    case 'takerate'
+        take_rate_arr = 0.05:0.05:0.20; %documented sensitivity bracket (see above)
+        num_rep_arr = 0;                %SE comparison is written at num_rep = 0 only
+        params.campaign = 'takerate';
+    otherwise
+        error('unknown CAMPAIGN "%s"', CAMPAIGN);
+end
+campaignSuffix = ''; if ~isempty(params.campaign), campaignSuffix = ['_' params.campaign]; end
 %Three layers of randomness, averaged per SLURM array task:
 %  (1) the seed aID fixes the DROP: gNB/CPE/UE locations and the initial
 %      large-scale state;
@@ -861,7 +894,7 @@ end
                 %like the results folders: the file tags (CPE/act/rep/seed)
                 %do not encode the rate/interference model, so per-stream-
                 %era matrices must never share a folder with these
-                packFolder = 'resultData/FWA_packing_analysis_pnorm';
+                packFolder = ['resultData/FWA_packing_analysis_pnorm' campaignSuffix];
                 if not(isfolder(packFolder))
                     mkdir(packFolder)
                 end
@@ -934,7 +967,7 @@ end
                         end
                         se_fwa_fb = sum(mean(rate_fb,2))/(Band*numCPE_tot);
                         se_cell_fb = sum(mean_rate_dl_cell)/(Band - Band_FWA)/(M_sectors*numUE);
-                        seDir = fullfile('resultData','FWA_SE_comparison_pnorm');
+                        seDir = fullfile('resultData',['FWA_SE_comparison_pnorm' campaignSuffix]);
                         if not(isfolder(seDir)), mkdir(seDir), end
                         seFile = fullfile(seDir, strcat('se_comp_', ...
                             num2str(take_rate_arr(idxnumCPE)), '_', ...

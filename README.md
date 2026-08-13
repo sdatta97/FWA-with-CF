@@ -69,13 +69,26 @@ Single local run:
 SimulationMain   % writes into resultData/FWA_const_*/
 ```
 
-Multi-seed campaign on a SLURM cluster:
+Multi-seed campaigns on a SLURM cluster. `FWA_CAMPAIGN` selects the sweep
+(see the CAMPAIGN SELECTOR block in `SimulationMain.m`); each campaign writes
+to its own result, packing and SE folders, so their data can never pool.
 
 ```bash
-sbatch --array=1-N submit.sbatch                     # one seed per array task
+# headline campaign: NCR sweep (num_rep 0:12) at the default 20% take rate
+sbatch --array=0-99 submit.sbatch
+
+# FWA take-rate sensitivity (take 0.05:0.05:0.20) at num_rep = 0 only.
+# ~13x cheaper per seed, and ~25 seeds is plenty: the SE multiple's
+# standard error is ~0.03 over 100 seeds.
+sbatch --export=ALL,FWA_CAMPAIGN=takerate --array=0-24 submit.sbatch
+
 matlab -batch "run('dataProcess/combineData.m')"     # after all tasks finish
 matlab -batch "run('dataProcess/plotData.m')"        # render figures
 ```
+
+`combineData` summarizes every campaign it finds and reports one line per
+operating point; `plotData` draws `SE_multiple_vs_take_rate` only when the
+take-rate campaign has been run.
 
 Deployment figure (regenerate after editing the script; manual PowerPoint edits
 can be made directly in `diagrams/deployment_model.pptx`):

@@ -14,6 +14,12 @@ clear;
 %CSV-combining pattern adapted from
 %https://in.mathworks.com/matlabcentral/answers/538119
 repoRoot = fullfile(fileparts(mfilename('fullpath')),'..');
+%The packing metric is DEFINED at the headline operating point, so this
+%is deliberately the untagged (CAMPAIGN = 'ncr') folder - not a wildcard.
+%Side campaigns write packing matrices too, under
+%FWA_packing_analysis_pnorm_<campaign>, and are ignored here: pooling
+%them would be silently wrong, since the reduction below keys on
+%min(numCPE) and would retag the curve to the smallest take rate.
 packDir = fullfile(repoRoot,'resultData','FWA_packing_analysis_pnorm');
 
 %% 1) Combine the sweep CSVs across seeds and summarize.
@@ -57,23 +63,39 @@ end
 %% 2) Tabulate the full-band per-terminal SE comparison across seeds
 %(the gross physical-layer contrast written by SimulationMain at
 %num_rep = 0: all UEs vs all CPEs, each on the whole band, no split, no
-%feasibility filtering)
-seDir = fullfile(repoRoot,'resultData','FWA_SE_comparison_pnorm');
-seFiles = dir(fullfile(seDir,'se_comp_*.csv'));
-if ~isempty(seFiles)
+%feasibility filtering). One summary per CAMPAIGN folder, and within a
+%folder one ROW per operating point: the take rate and activity are
+%carried in the file name (se_comp_<take>_<activity>_<seed>.csv), so a
+%take-rate campaign yields the SE multiple as a curve rather than a
+%single pooled mean. numCPE/numUE come along as the terminal counts,
+%which is what turns the per-terminal multiple into a per-sector one.
+seDirs = dir(fullfile(repoRoot,'resultData','FWA_SE_comparison_pnorm*'));
+seDirs = seDirs([seDirs.isdir]);
+for sd_i = 1:numel(seDirs)
+    seDir = fullfile(seDirs(sd_i).folder, seDirs(sd_i).name);
+    seFiles = dir(fullfile(seDir,'se_comp_*.csv'));
+    if isempty(seFiles), continue, end
     seT = cell(numel(seFiles),1);
     for f = 1:numel(seFiles)
-        seT{f} = readtable(fullfile(seDir,seFiles(f).name));
+        t = readtable(fullfile(seDir,seFiles(f).name));
+        tok = regexp(seFiles(f).name,'se_comp_([\d.]+)_([\d.]+)_','tokens','once');
+        t.take_rate = repmat(str2double(tok{1}), height(t), 1);
+        t.activity  = repmat(str2double(tok{2}), height(t), 1);
+        seT{f} = t;
     end
     seAll = vertcat(seT{:});
-    m = seAll.multiple;
-    seSum = table(numel(m), mean(seAll.se_cell_ue), mean(seAll.se_fwa_cpe), ...
-        mean(m), median(m), std(m)/sqrt(numel(m)), ...
-        'VariableNames',{'n_seeds','mean_se_cell_ue','mean_se_fwa_cpe', ...
-                         'mean_multiple','median_multiple','se_multiple'});
+    seSum = groupsummary(seAll, {'take_rate','activity'}, {'mean','median','std'}, ...
+        {'numCPE','numUE','se_cell_ue','se_fwa_cpe','multiple'});
+    %standard error of the multiple, per operating point
+    seSum.se_multiple = seSum.std_multiple ./ sqrt(seSum.GroupCount);
     writetable(seSum, fullfile(seDir,'se_comparison_summary.csv'));
-    fprintf('full-band SE comparison (%d seeds): cell %.2f vs FWA %.2f b/s/Hz per terminal -> %.1fx (median %.1fx)\n', ...
-        numel(m), seSum.mean_se_cell_ue, seSum.mean_se_fwa_cpe, seSum.mean_multiple, seSum.median_multiple);
+    for r = 1:height(seSum)
+        fprintf(['full-band SE [%s] take %.2f act %.2f (%d seeds): cell %.2f vs FWA %.2f ' ...
+                 'b/s/Hz per terminal -> %.2fx (median %.2fx, se %.3f)\n'], ...
+            seDirs(sd_i).name, seSum.take_rate(r), seSum.activity(r), seSum.GroupCount(r), ...
+            seSum.mean_se_cell_ue(r), seSum.mean_se_fwa_cpe(r), ...
+            seSum.mean_multiple(r), seSum.median_multiple(r), seSum.se_multiple(r));
+    end
 end
 
 %% 3) Reduce the packing matrices to spectrum-utilization curves

@@ -101,6 +101,40 @@ else
     fprintf('%s not found - run combineData first\n', packingFile);
 end
 
+%% Fig 5: SE multiple vs FWA take rate (CAMPAIGN = 'takerate')
+%Two views of the same runs. LEFT: the per-terminal multiple, which falls
+%steeply with take rate because a CPE's share of the sector's power and
+%spatial dimensions shrinks as more CPEs are served on the shared band.
+%RIGHT: the per-sector FWA throughput, which rises and then turns over
+%once the served streams (CPEs/sector x N_CPE) outgrow the BS array - the
+%MU-MIMO saturation knee. The cellular side is untouched by FWA take
+%rate, so it is the built-in control (flat) rather than a plotted series.
+seTakeFile = fullfile(repoRoot,'resultData','FWA_SE_comparison_pnorm_takerate', ...
+    'se_comparison_summary.csv');
+if isfile(seTakeFile)
+    S = sortrows(readtable(seTakeFile),'take_rate');
+    if height(S) > 1
+        M_sectors = 6; %2 sites x 3 sectors (params.M_sites, sectors_per_site)
+        fig=figure('Visible','off'); hold on; grid on;
+        yyaxis left
+        e = S.se_multiple; e(isnan(e)) = 0;
+        hM = errorbar(100*S.take_rate, S.mean_multiple, e, '-o', 'LineWidth',1.4, ...
+            'Color','k','MarkerFaceColor','k','MarkerSize',4);
+        ylabel('FWA-to-cellular SE multiple'); set(gca,'YColor','k');
+        yyaxis right
+        aggFWA = S.mean_se_fwa_cpe .* S.mean_numCPE / M_sectors;
+        hA = plot(100*S.take_rate, aggFWA, '-s', 'LineWidth',1, 'Color',cSubs, ...
+            'MarkerFaceColor',cSubs,'MarkerSize',4);
+        ylabel('FWA SE per sector (b/s/Hz)'); set(gca,'YColor',cSubs);
+        xlabel('FWA take rate (\%)','Interpreter','latex');
+        legend([hM;hA],{'Per-terminal multiple','Per-sector FWA SE'}, ...
+            'Location','northeast','FontSize',7);
+        styleIEEE(fig); saveIEEE(fig,plotDir,'SE_multiple_vs_take_rate');
+    end
+else
+    fprintf('%s not found - run the CAMPAIGN = ''takerate'' sweep first\n', seTakeFile);
+end
+
 %% IEEE journal template styling and export
 function styleIEEE(fig)
 set(fig,'Units','inches','Position',[1 1 3.5 2.5],'Color','w');
